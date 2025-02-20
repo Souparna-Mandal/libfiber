@@ -73,6 +73,12 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
     errno = ENOMEM;
     return NULL;
   }
+  ret->fiber_stats = calloc(1, sizeof(*ret->fiber_stats));
+  (ret->fiber_stats)->banned_until.tv_sec  = 0;
+  (ret->fiber_stats)->banned_until.tv_usec = 0;
+  
+  (ret->fiber_stats)->slice_size.tv_sec  = 0;
+  (ret->fiber_stats)->slice_size.tv_usec = 2;   // 2us is the slice Size
 
   ret->run_function = run_function;
   ret->param = param;
@@ -111,6 +117,12 @@ fiber_t* fiber_create_from_thread() {
     errno = ENOMEM;
     return NULL;
   }
+  
+  ret->fiber_stats = calloc(1, sizeof(*ret->fiber_stats));
+  ret->fiber_stats->banned_until.tv_sec  = 0;
+  ret->fiber_stats->banned_until.tv_usec = 0;
+  ret->fiber_stats->slice_size.tv_sec    = 0;
+  ret->fiber_stats->slice_size.tv_usec   = 2;   // 2us is the slice Size
 
   ret->state = FIBER_STATE_RUNNING;
   ret->detach_state = FIBER_DETACH_NONE;
@@ -220,3 +232,17 @@ int fiber_detach(fiber_t* f) {
   }
   return FIBER_SUCCESS;
 }
+
+  /* Lock Stats for Scheduler-v2 */
+  
+  lock_stats_t* get_lock_stats(fiber_t* fiber){
+    return fiber -> fiber_stats;
+  }
+  void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size){
+    if (banned_until != NULL)
+    {
+      (fiber->fiber_stats)->banned_until = *banned_until;}
+    if (slice_size != NULL){
+      (fiber->fiber_stats)->slice_size = *slice_size;}
+  }
+

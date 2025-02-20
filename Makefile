@@ -20,6 +20,7 @@ CFILES = \
     work_stealing_deque.c \
     work_queue.c \
     fiber_scheduler_wsd.c \
+    schedule_lock.c \
 
 USE_NATIVE_EVENTS ?= 1
 ifeq ($(USE_NATIVE_EVENTS),1)

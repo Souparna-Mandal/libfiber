@@ -8,6 +8,7 @@
 
 #include "fiber_context.h"
 #include "mpsc_fifo.h"
+#include "fiber_lock_stats.h"
 
 typedef int fiber_state_t;
 
@@ -38,6 +39,7 @@ typedef struct fiber {
   void* volatile scratch;  // to be used by internal fiber mechanisms. be sure
                            // mechanisms do not conflict! (ie. only use scratch
                            // while a fiber is sleeping/waiting)
+  lock_stats_t* fiber_stats;
 } fiber_t;
 
 #ifdef __cplusplus
@@ -62,6 +64,10 @@ extern int fiber_tryjoin(fiber_t* f, void** result);
 extern int fiber_yield();
 
 extern int fiber_detach(fiber_t* f);
+
+extern lock_stats_t* get_lock_stats(fiber_t* f); 
+
+extern void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size);
 
 #ifdef __cplusplus
 }
