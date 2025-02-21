@@ -111,6 +111,11 @@ extern mpmc_fifo_node_t* fiber_manager_get_mpmc_node();
 
 extern void fiber_manager_return_mpmc_node(mpmc_fifo_node_t* node);
 
+extern lock_stats_t* get_current_fiber_stats();
+
+extern void set_current_lock_stats(struct timeval* banned_until,
+                                   struct timeval* slice_size);
+
 typedef struct fiber_manager_stats {
   uint64_t yield_count;
   uint64_t steal_count;

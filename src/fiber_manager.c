@@ -44,7 +44,8 @@ static __thread volatile pthread_t this_thread;
 static fiber_manager_t** fiber_managers = NULL;
 static volatile int fiber_shutting_down = 0;
 static _Atomic(lockfree_ring_buffer_t*) fiber_free_mpmc_nodes = NULL;
-static _Atomic(hazard_pointer_thread_record_t*) fiber_hazard_head = NULL; 
+static _Atomic(hazard_pointer_thread_record_t*) fiber_hazard_head = NULL;
+static fiber_spinlock_t m1;
 
 void fiber_destroy(fiber_t* f) {
   if (f) {
@@ -98,6 +99,7 @@ static inline void fiber_manager_switch_to(fiber_manager_t* manager,
 }
 // main place where context switching and scheduling happens 
 void fiber_manager_yield(fiber_manager_t* manager) {
+  set_lock_status(0);// unset all locks 
   assert(fiber_manager_state == FIBER_MANAGER_STATE_STARTED);
   assert(manager);
   lock_stats_t new_fiber_lock_stats;
@@ -118,24 +120,30 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       gettimeofday(&now, NULL);
       // checking whether banned
       // NOT_BANNED AND LOCK AVAIALABLE
-      if ((timercmp(&now, &new_fiber_lock_stats.banned_until, >)) 
-           && (is_lock_using() != 1))
-      { 
+
+      //acquire lock 
+      fiber_spinlock_lock(&m1);
+      if ((timercmp(&now, &new_fiber_lock_stats.banned_until, >)) &&
+          (is_lock_using() != 1)) {
         // Optimisation, if the ban_time of the next fiber is less than the slice of its next fiber, 
         // allocate it the resources anyways and add on to the leftover ban
         // can optimise the push / pop up
-        set_lock_status();
+        set_lock_status(1);
+      // release lock
+      fiber_spinlock_unlock(&m1);
         fiber_manager_switch_to(manager, current_fiber, new_fiber);
 
       } else {
-        fiber_manager_schedule(manager, current_fiber);
-        goto try_steal; // try to steal some work 
+        fiber_spinlock_unlock(&m1);
+        fiber_manager_schedule(manager, new_fiber);
+        goto try_steal; // try to steal some work
 
       }  // pop back into queue
       break;
 
     } else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
                FIBER_STATE_SAVING_STATE_TO_WAIT == state) {
+      fiber_spinlock_unlock(&m1);
       if (!manager->maintenance_fiber) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
@@ -146,6 +154,7 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       // re-grab the manager, since we could be on a different thread now
       manager = fiber_manager_get();
     } else {
+      fiber_spinlock_unlock(&m1);
       // occasionally steal some work from threads with more load
 try_steal:
       if ((manager->yield_count & 1023) == 0) {
@@ -223,6 +232,7 @@ static void* fiber_manager_thread_func(void* param) {
 int fiber_manager_init(size_t num_threads) {
   splitstack_disable_block_signals();
   init_scheduler_lock_data();
+  fiber_spinlock_init(&m1);
   fiber_shutting_down = 0;
   should_check_events = true;
   this_thread = pthread_self();
@@ -585,4 +595,14 @@ void fiber_manager_all_stats(fiber_manager_stats_t* out) {
       fiber_manager_stats(fiber_managers[i], out);
     }
   }
+}
+
+lock_stats_t* get_current_fiber_stats(){
+  fiber_manager_t* manager = fiber_manager_get();
+  return get_lock_stats(manager->current_fiber);
+}
+
+void set_current_lock_stats(struct timeval* banned_until, struct timeval* slice_size){
+  fiber_manager_t* manager = fiber_manager_get();
+  set_lock_stats(manager->current_fiber, banned_until, slice_size);
 }
