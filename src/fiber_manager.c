@@ -99,14 +99,13 @@ static inline void fiber_manager_switch_to(fiber_manager_t* manager,
 }
 // main place where context switching and scheduling happens 
 void fiber_manager_yield(fiber_manager_t* manager) {
-  set_lock_status(0);// unset all locks 
   assert(fiber_manager_state == FIBER_MANAGER_STATE_STARTED);
   assert(manager);
   lock_stats_t new_fiber_lock_stats;
   // lock_stats_t curr_fiber_lock_stats;
 
   fiber_t* const current_fiber = manager->current_fiber;
-  // curr_fiber_lock_stats = *(get_lock_stats(current_fiber)); // add which lock in the future
+  set_lock_status(0, current_fiber);// unset all locks, but only yhr lock owner can do this 
   
   while (1) {
     manager->yield_count += 1;
@@ -118,8 +117,7 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       new_fiber_lock_stats = *(get_lock_stats(new_fiber));
       struct timeval now;
       gettimeofday(&now, NULL);
-      // checking whether banned
-      // NOT_BANNED AND LOCK AVAIALABLE
+      // check if lock is NOT_BANNED AND LOCK is AVAIALABLE
 
       //acquire lock 
       fiber_spinlock_lock(&m1);
@@ -128,14 +126,14 @@ void fiber_manager_yield(fiber_manager_t* manager) {
         // Optimisation, if the ban_time of the next fiber is less than the slice of its next fiber, 
         // allocate it the resources anyways and add on to the leftover ban
         // can optimise the push / pop up
-        set_lock_status(1);
-      // release lock
-      fiber_spinlock_unlock(&m1);
+        set_lock_status(1, new_fiber);
+        // release lock
+        fiber_spinlock_unlock(&m1);
         fiber_manager_switch_to(manager, current_fiber, new_fiber);
 
       } else {
         fiber_spinlock_unlock(&m1);
-        fiber_manager_schedule(manager, new_fiber);
+        fiber_manager_schedule(manager, new_fiber); // add it back to the runable queue
         goto try_steal; // try to steal some work
 
       }  // pop back into queue
@@ -143,7 +141,6 @@ void fiber_manager_yield(fiber_manager_t* manager) {
 
     } else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
                FIBER_STATE_SAVING_STATE_TO_WAIT == state) {
-      fiber_spinlock_unlock(&m1);
       if (!manager->maintenance_fiber) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
@@ -154,7 +151,6 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       // re-grab the manager, since we could be on a different thread now
       manager = fiber_manager_get();
     } else {
-      fiber_spinlock_unlock(&m1);
       // occasionally steal some work from threads with more load
 try_steal:
       if ((manager->yield_count & 1023) == 0) {
