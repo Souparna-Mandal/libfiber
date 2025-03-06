@@ -102,21 +102,22 @@ void fiber_manager_yield(fiber_manager_t* manager) {
   assert(fiber_manager_state == FIBER_MANAGER_STATE_STARTED);
   assert(manager);
   lock_stats_t new_fiber_lock_stats;
-  // lock_stats_t curr_fiber_lock_stats;
+  lock_stats_t curr_fiber_lock_stats;
 
   fiber_t* const current_fiber = manager->current_fiber;
-  set_lock_status(0, current_fiber);// unset all locks, but only yhr lock owner can do this 
-  
+  set_lock_status(0, current_fiber);// unset all locks, but only the lock owner can do this 
+  // fiber_do_real_sleep(/*seconds=*/0, /*useconds=*/10); // so that other waiters can acquire the lock
+
   while (1) {
     manager->yield_count += 1;
     const fiber_state_t state = current_fiber->state;
-     
     fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
+
+    struct timeval now;
+    gettimeofday(&now, NULL);
 
     if (new_fiber) {
       new_fiber_lock_stats = *(get_lock_stats(new_fiber));
-      struct timeval now;
-      gettimeofday(&now, NULL);
       // check if lock is NOT_BANNED AND LOCK is AVAIALABLE
 
       //acquire lock 
@@ -130,33 +131,55 @@ void fiber_manager_yield(fiber_manager_t* manager) {
         // release lock
         fiber_spinlock_unlock(&m1);
         fiber_manager_switch_to(manager, current_fiber, new_fiber);
+        break;
 
-      } else {
+      }
+      // TODO May not work, trying to fix the joining issue, if a fiber is banned 
+      else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
+        FIBER_STATE_SAVING_STATE_TO_WAIT == state){
+        fiber_spinlock_unlock(&m1);
+        fiber_manager_schedule(manager, new_fiber); // push back to runable queue
+        goto fib_finished;
+      } 
+    
+      else {
         fiber_spinlock_unlock(&m1);
         fiber_manager_schedule(manager, new_fiber); // add it back to the runable queue
-        goto try_steal; // try to steal some work
+        // ideally make it wait in a blocked queue for the banned time
 
+        // goto try_steal; // try to steal some work
       }  // pop back into queue
-      break;
-
-    } else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
+    } 
+    
+    else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
                FIBER_STATE_SAVING_STATE_TO_WAIT == state) {
+fib_finished:
+    
       if (!manager->maintenance_fiber) {
-        manager->maintenance_fiber =
-            fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
-      }
-
+            manager->maintenance_fiber = fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
+          }
       fiber_manager_switch_to(manager, current_fiber,
-                              manager->maintenance_fiber);
+                                  manager->maintenance_fiber);
       // re-grab the manager, since we could be on a different thread now
       manager = fiber_manager_get();
-    } else {
+    } 
+    
+    else {
       // occasionally steal some work from threads with more load
-try_steal:
+      curr_fiber_lock_stats = *(get_lock_stats(current_fiber));
       if ((manager->yield_count & 1023) == 0) {
         fiber_scheduler_load_balance(manager->scheduler);
       }
-      break;
+      fiber_spinlock_lock(&m1);
+      if ((timercmp(&now, &curr_fiber_lock_stats.banned_until, >)) &&
+          (is_lock_using() != 1)){ // keep spinning until we serve ban
+            set_lock_status(1, current_fiber);
+            fiber_spinlock_unlock(&m1);
+            break;
+      }
+      else {
+        fiber_spinlock_unlock(&m1);
+      }
     }
   }
 }
@@ -191,24 +214,48 @@ static void* fiber_manager_thread_func(void* param) {
     this_thread = pthread_self();
   }
 
+  lock_stats_t new_fiber_lock_stats;
   while (!fiber_shutting_down) {
     fiber_scheduler_load_balance(manager->scheduler);
 
     fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
     if (new_fiber) {
-      // make this fiber wait so we aren't scheduled again until all work is
+      // make this fiber (maintenance fiber) wait so we aren't scheduled again until all work is
       // done
-      manager->maintenance_fiber->state = FIBER_STATE_SAVING_STATE_TO_WAIT;
-      fiber_manager_switch_to(manager, manager->maintenance_fiber, new_fiber);
-    } else if (should_check_events) {
+      new_fiber_lock_stats = *(get_lock_stats(new_fiber));
+      struct timeval now;
+      gettimeofday(&now, NULL);
+
+      while (1){
+        fiber_spinlock_lock(&m1);
+        if ((timercmp(&now, &new_fiber_lock_stats.banned_until, >)) &&
+        (is_lock_using() != 1)) {
+          set_lock_status(1, new_fiber);
+          fiber_spinlock_unlock(&m1);
+          manager->maintenance_fiber->state = FIBER_STATE_SAVING_STATE_TO_WAIT;
+          fiber_manager_switch_to(manager, manager->maintenance_fiber, new_fiber);
+          break;
+        } 
+
+        else {
+          fiber_spinlock_unlock(&m1);
+          // keep spinning until we get lock
+          fiber_do_real_sleep(/*seconds=*/0, /*useconds=*/1);
+        }
+      }
+
+    } 
+    else if (should_check_events) {
       const int num_events = fiber_poll_events();
       if (num_events == 0) {
         fiber_poll_events_blocking(0, FIBER_TIME_RESOLUTION_MS * 1000);
       }
-    } else {
+    } 
+    else {
       fiber_do_real_sleep(/*seconds=*/0, /*useconds=*/10000);
     }
   }
+
   fiber_mark_completed(manager->maintenance_fiber, NULL);
   if (manager->maintenance_fiber != manager->thread_fiber) {
     while (1) {

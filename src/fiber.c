@@ -78,7 +78,7 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
   (ret->fiber_stats)->banned_until.tv_usec = 0;
   
   (ret->fiber_stats)->slice_size.tv_sec  = 0;
-  (ret->fiber_stats)->slice_size.tv_usec = 2;   // 2us is the slice Size
+  (ret->fiber_stats)->slice_size.tv_usec = 200;   // 2ms is the slice Size
 
   ret->run_function = run_function;
   ret->param = param;
@@ -122,7 +122,7 @@ fiber_t* fiber_create_from_thread() {
   ret->fiber_stats->banned_until.tv_sec  = 0;
   ret->fiber_stats->banned_until.tv_usec = 0;
   ret->fiber_stats->slice_size.tv_sec    = 0;
-  ret->fiber_stats->slice_size.tv_usec   = 2;   // 2us is the slice Size
+  ret->fiber_stats->slice_size.tv_usec   = 200;   // 2ms is the slice Size
 
   ret->state = FIBER_STATE_RUNNING;
   ret->detach_state = FIBER_DETACH_NONE;

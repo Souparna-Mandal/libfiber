@@ -27,5 +27,5 @@ void init_scheduler_lock_data() {
 }
 
 int is_lock_using() {
-    return atomic_load(&lock_using);
+  return atomic_load(&lock_using); 
 }
