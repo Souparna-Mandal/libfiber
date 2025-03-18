@@ -11,7 +11,6 @@
 #include "mpmc_fifo.h"
 #include "mpsc_fifo.h"
 #include "work_stealing_deque.h"
-#include "hashmap.h"
 
 typedef struct fiber_mpsc_to_push {
   mpsc_fifo_t* fifo;
@@ -50,11 +49,11 @@ typedef struct fiber_manager {
   uint64_t lock_contention_count;
 } fiber_manager_t;
 
-colours_t running;
+extern colours_t running;
 /* Stuff to make Libcolour and SCL work together*/ 
 
 // Set the hashmap
-hashmap2d* lock_fiber_d; 
+extern hashmap2d* locks_fibers;
 
 #ifdef __cplusplus
 extern "C" {

@@ -9,6 +9,7 @@
 #include "fiber_context.h"
 #include "mpsc_fifo.h"
 #include "fiber_lock_stats.h"
+#include "hashmap.h"
 
 typedef int fiber_state_t;
 
@@ -24,7 +25,7 @@ struct fiber_manager;
 #define FIBER_DETACH_WAIT_FOR_JOINER (1)
 #define FIBER_DETACH_WAIT_TO_JOIN (2)
 #define FIBER_DETACH_DETACHED (3)
-#define MAX_LOCKS(128)
+#define MAX_LOCKS (128)
 
 typedef long long colours_t;
 
@@ -51,7 +52,7 @@ typedef struct fiber {
 /* Stuff to make Libcolour and SCL work together*/ 
 
 // Set the hashmap
-hashmap2d* lock_fiber_d;
+extern hashmap2d* lock_fiber_d;
 
 #ifdef __cplusplus
 extern "C" {
@@ -80,7 +81,9 @@ extern int set_colour(fiber_t* f, int index);
 
 extern colours_t get_colour(fiber_t* f);
 
-extern void** get_locks_array(fiber_t* f)
+extern void** get_locks(fiber_t* f);
+
+extern void add_locks(fiber_t* f, void* lock);
 
 #ifdef __cplusplus
 }

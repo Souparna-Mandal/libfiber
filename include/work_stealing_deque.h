@@ -95,6 +95,14 @@ extern void* wsd_work_stealing_deque_pop_bottom(wsd_work_stealing_deque_t* d);
 
 extern void* wsd_work_stealing_deque_steal(wsd_work_stealing_deque_t* d);
 
+/* New Functions for libcolour + SCL*/
+
+void* wsd_work_stealing_deque_pop_at(wsd_work_stealing_deque_t* d,
+                                     int64_t index_from_bottom);
+
+void* wsd_work_stealing_deque_peek_bottom(wsd_work_stealing_deque_t* d,
+                                          int64_t index_from_bottom);
+
 #ifdef __cplusplus
 }
 #endif

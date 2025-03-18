@@ -244,17 +244,16 @@ int fiber_detach(fiber_t* f) {
   //     (fiber->fiber_stats)->slice_size = *slice_size;}
   // }
 
-(void*)
 
 colours_t get_colours(fiber_t* f) { return f->bitcolour; }
 
-int set_colour(int index, fiber_t* f) {
+int set_colour(fiber_t* f,int index) {
   f->bitcolour |= (1 << index);
   return f->bitcolour;          
 }
 
 void** get_locks(fiber_t* f) { return f->locks; } // locks is an array of pointers void*
-int get_num_locks(fiber_t* f){return f->num_locks}
+int get_num_locks(fiber_t* f){return f->num_locks; }
 
 void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks being used by the fiber 
   // Curren

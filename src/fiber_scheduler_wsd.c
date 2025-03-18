@@ -93,7 +93,7 @@ void fiber_scheduler_schedule(fiber_scheduler_t* scheduler,
       ((fiber_scheduler_wsd_t*)scheduler)->schedule_from, the_fiber); 
 }
 
-fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d, colours_t running) {
+fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d, colours_t *running) {
   fiber_scheduler_wsd_t* const scheduler = (fiber_scheduler_wsd_t*)sched;
   assert(scheduler);
   if (wsd_work_stealing_deque_size(scheduler->schedule_from) == 0) {
@@ -106,8 +106,8 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
   while (wsd_work_stealing_deque_size(scheduler->schedule_from) > 0) {
     // fiber_t* const new_fiber =
     //     (fiber_t*)wsd_work_stealing_deque_pop_bottom(scheduler->schedule_from);
-    fiber_t* const new_fiber;
-    if ( new_fiber = wsd_work_stealing_deque_peek_bottom(scheduler->schedule_from,i) == NULL ){
+    fiber_t* new_fiber;
+    if ((new_fiber = wsd_work_stealing_deque_peek_bottom(scheduler->schedule_from,i)) == NULL ){
       break; // End of dequeue
     }
     if (is_fiber_runable(new_fiber, lock_fiber_d, running)) {
@@ -117,8 +117,8 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
           // Not Needed as we dont pop 
         } 
         else {
-          fiber_t* const new_fiber_2 =
-              wsd_work_stealing_deque_pop_at(scheduler->schedule_from, i);
+          // fiber_t* new_fiber_2 =
+          wsd_work_stealing_deque_pop_at(scheduler->schedule_from, i);
           return new_fiber;
         }
     }
@@ -171,10 +171,10 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
 
 /* New Function for Libcolour + SCL Implementation*/
 
-int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t running){
+int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running){
   lock_stats_t* lock_stat;
   colours_t fib_colour = get_colour(fiber);
-  if (fib_colour & running){ // if it is 0 then its runable
+  if (fib_colour & (*running)){ // if it is 0 then its runable
     return 0; // Not runable 
   }
 
@@ -186,7 +186,7 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t running)
   //timercmp(&now, &new_fiber_lock_stats.banned_until, >);
   for (int i = 0; i < MAX_LOCKS; i++) {
     if (locks[i] == NULL) break; // No More Locks being used  
-    if (get(lock_fiber_d, fiber, locks[i], &lock_stat)){
+    if (get(lock_fiber_d, (void*)fiber, locks[i], &lock_stat)){
       if timercmp(&now, &lock_stat->banned_until, <){ // The Fiber is Banned from Using atleast one Lock 
         return 0; 
       }
