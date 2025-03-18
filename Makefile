@@ -19,7 +19,7 @@ CFILES = \
     hazard_pointer.c \
     work_stealing_deque.c \
     work_queue.c \
-    fiber_scheduler_dist.c \
+    fiber_scheduler_wsd.c \
     schedule_lock.c \
 
 USE_NATIVE_EVENTS ?= 1

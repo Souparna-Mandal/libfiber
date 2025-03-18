@@ -24,6 +24,9 @@ struct fiber_manager;
 #define FIBER_DETACH_WAIT_FOR_JOINER (1)
 #define FIBER_DETACH_WAIT_TO_JOIN (2)
 #define FIBER_DETACH_DETACHED (3)
+#define MAX_LOCKS(128)
+
+typedef long long colours_t;
 
 typedef struct fiber {
   volatile fiber_state_t state;
@@ -39,8 +42,16 @@ typedef struct fiber {
   void* volatile scratch;  // to be used by internal fiber mechanisms. be sure
                            // mechanisms do not conflict! (ie. only use scratch
                            // while a fiber is sleeping/waiting)
-  lock_stats_t* fiber_stats;
+  void* locks[MAX_LOCKS];
+  int num_locks;
+  colours_t bitcolour;
 } fiber_t;
+
+
+/* Stuff to make Libcolour and SCL work together*/ 
+
+// Set the hashmap
+hashmap2d* lock_fiber_d;
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,9 +76,11 @@ extern int fiber_yield();
 
 extern int fiber_detach(fiber_t* f);
 
-extern lock_stats_t* get_lock_stats(fiber_t* f); 
+extern int set_colour(fiber_t* f, int index);
 
-extern void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size);
+extern colours_t get_colour(fiber_t* f);
+
+extern void** get_locks_array(fiber_t* f)
 
 #ifdef __cplusplus
 }

@@ -73,13 +73,10 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
     errno = ENOMEM;
     return NULL;
   }
-  ret->fiber_stats = calloc(1, sizeof(*ret->fiber_stats));
-  (ret->fiber_stats)->banned_until.tv_sec  = 0;
-  (ret->fiber_stats)->banned_until.tv_usec = 0;
-  
-  (ret->fiber_stats)->slice_size.tv_sec  = 0;
-  (ret->fiber_stats)->slice_size.tv_usec = 200;   // 2ms is the slice Size
-
+  for (int i = 0; i < MAX_LOCKS; i++) {
+    ret->locks[i] = NULL;
+  }
+  ret->bitcolour = 0;
   ret->run_function = run_function;
   ret->param = param;
   ret->state = FIBER_STATE_READY;
@@ -118,12 +115,11 @@ fiber_t* fiber_create_from_thread() {
     return NULL;
   }
   
-  ret->fiber_stats = calloc(1, sizeof(*ret->fiber_stats));
-  ret->fiber_stats->banned_until.tv_sec  = 0;
-  ret->fiber_stats->banned_until.tv_usec = 0;
-  ret->fiber_stats->slice_size.tv_sec    = 0;
-  ret->fiber_stats->slice_size.tv_usec   = 200;   // 2ms is the slice Size
-
+  for (int i = 0; i < MAX_LOCKS; i++) {
+    ret->locks[i] = NULL;
+  }
+  ret->bitcolour = 0;
+  ret->num_locks = 0;
   ret->state = FIBER_STATE_RUNNING;
   ret->detach_state = FIBER_DETACH_NONE;
   ret->join_info = NULL;
@@ -235,14 +231,33 @@ int fiber_detach(fiber_t* f) {
 
   /* Lock Stats for Scheduler-v2 */
   
-  lock_stats_t* get_lock_stats(fiber_t* fiber){
-    return fiber -> fiber_stats;
-  }
-  void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size){
-    if (banned_until != NULL)
-    {
-      (fiber->fiber_stats)->banned_until = *banned_until;}
-    if (slice_size != NULL){
-      (fiber->fiber_stats)->slice_size = *slice_size;}
-  }
+  // lock_stats_t* get_lock_stats(fiber_t* fiber){
+  //   return fiber -> fiber_stats;
+  // }
 
+  
+  // void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size){
+  //   if (banned_until != NULL)
+  //   {
+  //     (fiber->fiber_stats)->banned_until = *banned_until;}
+  //   if (slice_size != NULL){
+  //     (fiber->fiber_stats)->slice_size = *slice_size;}
+  // }
+
+(void*)
+
+colours_t get_colours(fiber_t* f) { return f->bitcolour; }
+
+int set_colour(int index, fiber_t* f) {
+  f->bitcolour |= (1 << index);
+  return f->bitcolour;          
+}
+
+void** get_locks(fiber_t* f) { return f->locks; } // locks is an array of pointers void*
+int get_num_locks(fiber_t* f){return f->num_locks}
+
+void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks being used by the fiber 
+  // Curren
+  f->num_locks += 1;
+  f->locks[f->num_locks] = lock; 
+}

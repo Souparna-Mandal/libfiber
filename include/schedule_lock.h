@@ -5,8 +5,11 @@
 #include <stdatomic.h>
 #include "fiber.h"
 
-extern atomic_int lock_using;
-extern fiber_t* lock_holder_f;
+// each bit represnts if lock with id bit_no is being used 
+extern atomic_int lock_using; 
+
+// array of fibers marking the lock holders 
+extern fiber_t* lock_holder_f[64] ; 
 
 extern void add_lock();
 extern void init_scheduler_lock_data();

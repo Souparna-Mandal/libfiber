@@ -6,6 +6,7 @@ fiber_t* lock_holder_f;
 
 void add_lock(){
     // If lock_using is -1, then atomically set it to 0.
+    // We add to our new lock_hash_map
     int expected = -1;
     atomic_compare_exchange_strong(&lock_using, &expected, 0);
 }

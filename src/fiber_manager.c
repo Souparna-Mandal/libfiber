@@ -111,7 +111,7 @@ void fiber_manager_yield(fiber_manager_t* manager) {
   while (1) {
     manager->yield_count += 1;
     const fiber_state_t state = current_fiber->state;
-    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
+    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, lock_fiber_d);
 
     struct timeval now;
     gettimeofday(&now, NULL);
@@ -218,7 +218,7 @@ static void* fiber_manager_thread_func(void* param) {
   while (!fiber_shutting_down) {
     fiber_scheduler_load_balance(manager->scheduler);
 
-    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
+    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, lock_fiber_d);
     if (new_fiber) {
       // make this fiber (maintenance fiber) wait so we aren't scheduled again until all work is
       // done
@@ -263,7 +263,7 @@ static void* fiber_manager_thread_func(void* param) {
         fiber_manager_switch_to(manager, manager->maintenance_fiber,
                                 manager->thread_fiber);
       }
-      fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
+      fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, lock_fiber_d);
       if (new_fiber && new_fiber != manager->maintenance_fiber) {
         fiber_manager_switch_to(manager, manager->maintenance_fiber, new_fiber);
       }
@@ -274,8 +274,12 @@ static void* fiber_manager_thread_func(void* param) {
 
 int fiber_manager_init(size_t num_threads) {
   splitstack_disable_block_signals();
+  /* Initialisations to make libcolour + SCl work */
   init_scheduler_lock_data();
   fiber_spinlock_init(&m1);
+  running = 0;
+  *lock_fiber_d = create_hashmap2d(MAX_LOCKS);
+
   fiber_shutting_down = 0;
   should_check_events = true;
   this_thread = pthread_self();
