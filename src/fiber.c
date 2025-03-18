@@ -245,7 +245,7 @@ int fiber_detach(fiber_t* f) {
   // }
 
 
-colours_t get_colours(fiber_t* f) { return f->bitcolour; }
+colours_t get_colour(fiber_t* f) { return f->bitcolour; }
 
 int set_colour(fiber_t* f,int index) {
   f->bitcolour |= (1 << index);

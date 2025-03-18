@@ -203,7 +203,7 @@ int fiber_manager_init(size_t num_threads) {
   this_thread = pthread_self();
 
   running = 0;
-  locks_fibers = create_hashmap2d(MAX_LOCKS);
+  lock_fiber_d = create_hashmap2d(MAX_LOCKS);
 
   if (fiber_manager_get_state() != FIBER_MANAGER_STATE_NONE) {
     errno = EINVAL;

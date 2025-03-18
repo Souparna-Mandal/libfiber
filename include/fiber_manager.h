@@ -52,8 +52,6 @@ typedef struct fiber_manager {
 extern colours_t running;
 /* Stuff to make Libcolour and SCL work together*/ 
 
-// Set the hashmap
-extern hashmap2d* locks_fibers;
 
 #ifdef __cplusplus
 extern "C" {
