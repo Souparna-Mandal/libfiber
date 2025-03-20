@@ -26,6 +26,7 @@ struct fiber_manager;
 #define FIBER_DETACH_WAIT_TO_JOIN (2)
 #define FIBER_DETACH_DETACHED (3)
 #define MAX_LOCKS (128)
+#define MAX_FIBS (1000)
 
 typedef long long colours_t;
 
@@ -77,13 +78,17 @@ extern int fiber_yield();
 
 extern int fiber_detach(fiber_t* f);
 
-extern int set_colour(fiber_t* f, int index);
+extern void set_colour(fiber_t* f, int index, void* lock);
 
 extern colours_t get_colour(fiber_t* f);
 
 extern void** get_locks(fiber_t* f);
 
 extern void add_locks(fiber_t* f, void* lock);
+
+extern int get_fiber_count();
+
+extern int get_num_locks(fiber_t* f);
 
 #ifdef __cplusplus
 }

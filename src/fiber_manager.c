@@ -46,6 +46,7 @@ static _Atomic(lockfree_ring_buffer_t*) fiber_free_mpmc_nodes = NULL;
 static _Atomic(hazard_pointer_thread_record_t*) fiber_hazard_head = NULL;
 hashmap2d* lock_fiber_d;
 colours_t running;
+fiber_spinlock_t m1;
 
 void fiber_destroy(fiber_t* f) {
   if (f) {
@@ -90,9 +91,16 @@ static inline void fiber_manager_switch_to(fiber_manager_t* manager,
     old_fiber->state = FIBER_STATE_READY;
     manager->to_schedule = old_fiber;
   }
+
   manager->current_fiber = new_fiber;
   manager->old_fiber = old_fiber;
   new_fiber->state = FIBER_STATE_RUNNING;
+
+  // Reset  Running colours during Context Switch 
+  fiber_spinlock_lock(&m1);
+  running = (running & ~old_fiber->bitcolour) | new_fiber->bitcolour; // remove old colour and add new one 
+  fiber_spinlock_unlock(&m1);
+
   fiber_context_swap(&old_fiber->context, &new_fiber->context);
 
   fiber_manager_do_maintenance();
@@ -103,6 +111,12 @@ void fiber_manager_yield(fiber_manager_t* manager) {
   assert(manager);
 
   fiber_t* const current_fiber = manager->current_fiber;
+  // Unset Colour 
+
+  fiber_spinlock_lock(&m1);
+  running = running & ~current_fiber->bitcolour; // reset 
+  fiber_spinlock_unlock(&m1);
+  
   while (1) {
     manager->yield_count += 1;
     const fiber_state_t state = current_fiber->state;
@@ -111,18 +125,24 @@ void fiber_manager_yield(fiber_manager_t* manager) {
     if (new_fiber) {
       fiber_manager_switch_to(manager, current_fiber, new_fiber);
       break;
-    } else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
+    } 
+    else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
                FIBER_STATE_SAVING_STATE_TO_WAIT == state) {
       if (!manager->maintenance_fiber) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
       }
-
+      printf(" Next fiber is in waiting state and not running why \n");
       fiber_manager_switch_to(manager, current_fiber,
                               manager->maintenance_fiber);
       // re-grab the manager, since we could be on a different thread now
       manager = fiber_manager_get();
+
     } else {
+      // // current_fiber->state = FIBER_STATE_READY;
+      // manager->to_schedule = current_fiber;
+
+      // fiber_manager_do_maintenance();
       // occasionally steal some work from threads with more load
       if ((manager->yield_count & 1023) == 0) {
         fiber_scheduler_load_balance(manager->scheduler);
@@ -203,7 +223,8 @@ int fiber_manager_init(size_t num_threads) {
   this_thread = pthread_self();
 
   running = 0;
-  lock_fiber_d = create_hashmap2d(MAX_LOCKS);
+  lock_fiber_d = create_hashmap2d(MAX_LOCKS * MAX_FIBS); // wasteful but can be fixed
+  fiber_spinlock_init(&m1);
 
   if (fiber_manager_get_state() != FIBER_MANAGER_STATE_NONE) {
     errno = EINVAL;
@@ -325,6 +346,7 @@ void fiber_manager_do_maintenance() {
   }
 
   if (manager->done_fiber) {
+    printf("Fiber Done");
     fiber_destroy(manager->done_fiber);
     manager->done_fiber = NULL;
   }
@@ -562,5 +584,74 @@ void fiber_manager_all_stats(fiber_manager_stats_t* out) {
     for (i = 0; i < fiber_manager_num_threads; ++i) {
       fiber_manager_stats(fiber_managers[i], out);
     }
+  }
+}
+/* New Functions to Set ban times and lock_slices, when passed a fiber and lock*/
+
+void set_lock_fiber_data(void* lock, struct timeval* ban_time, struct timeval* time_slice) {
+  fiber_manager_t* manager = fiber_manager_get();
+  fiber_t* cur_fiber = manager->current_fiber;
+
+  // Allocate memory for lock_stats_t
+  lock_stats_t* lock_stats = malloc(sizeof(lock_stats_t));
+  if (!lock_stats) {
+      fprintf(stderr, "Error allocating memory for lock_stats_t\n");
+      exit(EXIT_FAILURE);
+  }
+
+  // Initialize with provided values or default if NULL
+  if (ban_time != NULL) {
+      lock_stats->banned_until = *ban_time;
+  } else {
+      lock_stats->banned_until = (struct timeval){0,0};
+  }
+
+  if (time_slice != NULL) {
+      lock_stats->slice_size = *time_slice;
+  } else {
+      lock_stats->slice_size = (struct timeval){0,0};
+  }
+
+  insert(lock_fiber_d, (void*)cur_fiber, lock, lock_stats);
+}
+
+
+
+lock_stats_t* get_lock_fiber_data(void* lock) {
+  fiber_manager_t* manager = fiber_manager_get();
+  fiber_t* cur_fiber = manager->current_fiber;
+  lock_stats_t* lock_stat = NULL; 
+
+  if (get(lock_fiber_d, (void*)cur_fiber, lock, &lock_stat)) {
+      return lock_stat;
+      printf("got data");
+  }
+  printf("got no data");
+  return NULL; 
+}
+
+
+
+void set_fiber_colour(int index, void* lock){
+  fiber_manager_t *manager = fiber_manager_get();
+  fiber_t* f = manager->current_fiber;
+
+  if (((f->bitcolour) & (1 << index)) ==
+      0) {  // This means if this is 0 then lock has been previously recorded
+    printf("Recording a lock \n");
+    set_colour(f, 0, lock);
+
+    struct timeval slice;
+    slice.tv_sec  = 0;
+    slice.tv_usec = 200;
+
+    struct timeval baned_until;
+    baned_until.tv_sec = 0;
+    baned_until.tv_usec = 0;
+    
+    set_lock_fiber_data(lock, &baned_until, &slice);
+
+    fiber_yield(); // we yield after setting the fiber colour for the first time for a lock
+    // CAN BE WRONG LOGIC FOR SOME PROGRAMMES WITH ONE TIME USE LOCKS
   }
 }

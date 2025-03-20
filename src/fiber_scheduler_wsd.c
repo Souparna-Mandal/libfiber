@@ -96,35 +96,40 @@ void fiber_scheduler_schedule(fiber_scheduler_t* scheduler,
 fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d, colours_t *running) {
   fiber_scheduler_wsd_t* const scheduler = (fiber_scheduler_wsd_t*)sched;
   assert(scheduler);
-  if (wsd_work_stealing_deque_size(scheduler->schedule_from) == 0) {
+
+  int size = wsd_work_stealing_deque_size(scheduler->schedule_from);
+  if (size == 0) {
     wsd_work_stealing_deque_t* const temp = scheduler->schedule_from;
     scheduler->schedule_from = scheduler->store_to;
     scheduler->store_to = temp;
   }
 
   int i = 0;
-  while (wsd_work_stealing_deque_size(scheduler->schedule_from) > 0) {
+  while ((size > 0) && (i < size)) {
     // fiber_t* const new_fiber =
     //     (fiber_t*)wsd_work_stealing_deque_pop_bottom(scheduler->schedule_from);
     fiber_t* new_fiber;
-    if ((new_fiber = wsd_work_stealing_deque_peek_bottom(scheduler->schedule_from,i)) == NULL ){
+    if ((new_fiber = wsd_work_stealing_deque_peek_bottom(scheduler->schedule_from, i)) == NULL ){
       break; // End of dequeue
     }
     if (is_fiber_runable(new_fiber, lock_fiber_d, running)) {
       if (new_fiber != WSD_EMPTY && new_fiber != WSD_ABORT) {
         if (new_fiber->state == FIBER_STATE_SAVING_STATE_TO_WAIT) {
-          // wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber);
+          wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber);
           // Not Needed as we dont pop 
         } 
         else {
           // fiber_t* new_fiber_2 =
           wsd_work_stealing_deque_pop_at(scheduler->schedule_from, i);
+          // printf("scheduled a fiber \n");
           return new_fiber;
         }
+      }
     }
-    }
-    i += 1; // increment index for checking 
+    i += 1; // increment index for checking
+    size = wsd_work_stealing_deque_size(scheduler->schedule_from);
   }
+  // printf("NOT SCHEDULING \n");
   return NULL;
 }
 
@@ -174,21 +179,25 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
 int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running){
   lock_stats_t* lock_stat;
   colours_t fib_colour = get_colour(fiber);
-  if (fib_colour & (*running)){ // if it is 0 then its runable
-    return 0; // Not runable 
+
+  if (fib_colour & (*running)) {  // if it is 0 then its runable
+    // int val = (int) (fib_colour & (*running));
+    // printf("fib_colour & (*running) gives us %d \n", val);
+     return 0;  // Not runable
   }
-
   void** locks = get_locks(fiber);
-
+  // printf("lock address %p\n", locks[0]);
   // get the current time in microseconds + seconds as a timeval struct
   struct timeval now;
   gettimeofday(&now, NULL);
   //timercmp(&now, &new_fiber_lock_stats.banned_until, >);
-  for (int i = 0; i < MAX_LOCKS; i++) {
-    if (locks[i] == NULL) break; // No More Locks being used  
+  int num_locks = get_num_locks(fiber) + 1;
+  for (int i = 0; i < num_locks; i++) {
     if (get(lock_fiber_d, (void*)fiber, locks[i], &lock_stat)){
-      if timercmp(&now, &lock_stat->banned_until, <){ // The Fiber is Banned from Using atleast one Lock 
-        return 0; 
+      // printf("The  ban time is Seconds: %ld, Microseconds: %ld\n", (long)&lock_stat->banned_until.tv_sec, (long)&lock_stat->banned_until.tv_usec);
+      if (timercmp(&now, &lock_stat->banned_until, <)) { // The Fiber is Banned from Using at least one Lock
+        // printf("Fiber is Banned");
+        return 0;
       }
     }
   }
