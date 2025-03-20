@@ -110,13 +110,7 @@ void fiber_manager_yield(fiber_manager_t* manager) {
   assert(fiber_manager_state == FIBER_MANAGER_STATE_STARTED);
   assert(manager);
 
-  fiber_t* const current_fiber = manager->current_fiber;
-  // Unset Colour 
-
-  fiber_spinlock_lock(&m1);
-  running = running & ~current_fiber->bitcolour; // reset 
-  fiber_spinlock_unlock(&m1);
-  
+  fiber_t* const current_fiber = manager->current_fiber;  
   while (1) {
     manager->yield_count += 1;
     const fiber_state_t state = current_fiber->state;
@@ -143,11 +137,22 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       // manager->to_schedule = current_fiber;
 
       // fiber_manager_do_maintenance();
-      // occasionally steal some work from threads with more load
-      if ((manager->yield_count & 1023) == 0) {
-        fiber_scheduler_load_balance(manager->scheduler);
+
+      // It is telling to run the current fiber again, check if it is runnable 
+      if (is_fiber_runable(current_fiber,lock_fiber_d,&running)){
+        // occasionally steal some work from threads with more load
+        if ((manager->yield_count & 1023) == 0) {
+          fiber_scheduler_load_balance(manager->scheduler);
+        }
+        break;
       }
-      break;
+      else {
+        //printf("All Fibers are Banned, just keep trying to schedule");
+        // make them wait in some queue ( then wake them up from the queue )
+        fiber_spinlock_lock(&m1);
+        running = running & ~current_fiber->bitcolour; // reset 
+        fiber_spinlock_unlock(&m1);
+      }
     }
   }
 }
@@ -346,7 +351,7 @@ void fiber_manager_do_maintenance() {
   }
 
   if (manager->done_fiber) {
-    printf("Fiber Done");
+    printf("Fiber Done \n");
     fiber_destroy(manager->done_fiber);
     manager->done_fiber = NULL;
   }
@@ -624,9 +629,7 @@ lock_stats_t* get_lock_fiber_data(void* lock) {
 
   if (get(lock_fiber_d, (void*)cur_fiber, lock, &lock_stat)) {
       return lock_stat;
-      printf("got data");
   }
-  printf("got no data");
   return NULL; 
 }
 
