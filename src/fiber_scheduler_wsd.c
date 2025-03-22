@@ -194,11 +194,11 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
     printf(" No locks registered Yet \n");
     return 1;
   }
-  for (int i = 0; i < num_locks + 1; i++) {
+  for (int i = 0; i < num_locks; i++) {
     if (get(lock_fiber_d, (void*)fiber, locks[i], &lock_stat)){
       // printf("The  ban time is Seconds: %ld, Microseconds: %ld\n", (long)&lock_stat->banned_until.tv_sec, (long)&lock_stat->banned_until.tv_usec);
       if (timercmp(&now, &lock_stat->banned_until, <)) { // The Fiber is Banned from Using at least one Lock
-        // printf("Fiber is Banned");
+        //printf("Fiber is Banned \n");
         return 0;
       }
     }

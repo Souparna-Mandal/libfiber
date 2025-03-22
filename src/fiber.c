@@ -89,6 +89,7 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id += 1;
+  ret->is_colour_freed = 0;
   if (FIBER_SUCCESS !=
       fiber_context_init(&ret->context, stack_size, &fiber_go_function, ret)) {
     free(ret);
@@ -131,6 +132,7 @@ fiber_t* fiber_create_from_thread() {
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id = 1;
+  ret->is_colour_freed = 0;
   if (FIBER_SUCCESS != fiber_context_init_from_thread(&ret->context)) {
     free(ret);
     return NULL;

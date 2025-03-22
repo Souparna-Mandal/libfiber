@@ -10,6 +10,7 @@
 #include "mpsc_fifo.h"
 #include "fiber_lock_stats.h"
 #include "hashmap.h"
+#include "hashmap_1_d.h"
 
 typedef int fiber_state_t;
 
@@ -45,6 +46,7 @@ typedef struct fiber {
                            // mechanisms do not conflict! (ie. only use scratch
                            // while a fiber is sleeping/waiting)
   void* locks[MAX_LOCKS];
+  int is_colour_freed;
   int num_locks;
   colours_t bitcolour;
 } fiber_t;

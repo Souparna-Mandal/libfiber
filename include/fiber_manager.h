@@ -141,12 +141,13 @@ extern void fiber_manager_stats(fiber_manager_t* manager,
 // stats are *added* to the values currently in *out
 extern void fiber_manager_all_stats(fiber_manager_stats_t* out);
 
-extern void set_fiber_colour(int index, void* lock);
+extern void set_fiber_colour(void* lock);
 
 extern lock_stats_t* get_lock_fiber_data(void* lock);
 
 extern void set_lock_fiber_data(void* lock, struct timeval* ban_time,
                                 struct timeval* time_slice);
+extern int get_lock_index(void* lock);
 
 #ifdef __cplusplus
 }

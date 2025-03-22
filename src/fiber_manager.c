@@ -45,6 +45,8 @@ static volatile int fiber_shutting_down = 0;
 static _Atomic(lockfree_ring_buffer_t*) fiber_free_mpmc_nodes = NULL;
 static _Atomic(hazard_pointer_thread_record_t*) fiber_hazard_head = NULL;
 hashmap2d* lock_fiber_d;
+int current_lock_index = 0;
+hashmap_t* locks_to_indices;
 colours_t running;
 fiber_spinlock_t m1;
 
@@ -126,32 +128,38 @@ void fiber_manager_yield(fiber_manager_t* manager) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
       }
-      printf(" Next fiber is in waiting state and not running why \n");
+      //printf(" Next fiber is in waiting state and not running why \n");
       fiber_manager_switch_to(manager, current_fiber,
                               manager->maintenance_fiber);
       // re-grab the manager, since we could be on a different thread now
       manager = fiber_manager_get();
 
-    } else {
-      // // current_fiber->state = FIBER_STATE_READY;
-      // manager->to_schedule = current_fiber;
-
-      // fiber_manager_do_maintenance();
-
-      // It is telling to run the current fiber again, check if it is runnable 
-      if (is_fiber_runable(current_fiber,lock_fiber_d,&running)){
+    } 
+    
+    // Enter this state if the same fiber is to be scheduled agaibn
+    else {
+      // check if the same fiber is runable again
+      printf("Same fiber will be scheduled again \n");
+      if (is_fiber_runable(current_fiber, lock_fiber_d, &running)) {
         // occasionally steal some work from threads with more load
-        if ((manager->yield_count & 1023) == 0) {
+        fiber_spinlock_lock(&m1);
+        running = running | current_fiber->bitcolour;
+        fiber_spinlock_unlock(&m1);
+        current_fiber->is_colour_freed = 0;
+        if ((manager->yield_count & 1023) == 0) { // need to move this 
           fiber_scheduler_load_balance(manager->scheduler);
         }
         break;
       }
-      else {
+      // If it is not runable, only the first time you do this check, we want to reset the colour 
+      if (current_fiber->is_colour_freed == 0) {
         //printf("All Fibers are Banned, just keep trying to schedule");
         // make them wait in some queue ( then wake them up from the queue )
         fiber_spinlock_lock(&m1);
-        running = running & ~current_fiber->bitcolour; // reset 
+        running = running & ~current_fiber->bitcolour; 
         fiber_spinlock_unlock(&m1);
+        current_fiber->is_colour_freed = 1;
+        printf("Freed Colour \n");
       }
     }
   }
@@ -187,7 +195,8 @@ static void* fiber_manager_thread_func(void* param) {
     this_thread = pthread_self();
   }
 
-  while (!fiber_shutting_down) {
+  // when fiber is done schedule the next thread so we need to uncolour here too 
+  while (!fiber_shutting_down) { 
     fiber_scheduler_load_balance(manager->scheduler);
 
     fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, lock_fiber_d, &running);
@@ -202,11 +211,17 @@ static void* fiber_manager_thread_func(void* param) {
         fiber_poll_events_blocking(0, FIBER_TIME_RESOLUTION_MS * 1000);
       }
     } else {
-      fiber_do_real_sleep(/*seconds=*/0, /*useconds=*/10000);
+      // remove colour first 
+      if (manager->current_fiber->is_colour_freed == 0){
+        running = running & ~(manager->current_fiber->bitcolour); // current fiber is shutting down
+        manager->current_fiber->is_colour_freed = 1;
+      }
+      fiber_do_real_sleep(/*seconds=*/0, /*useconds=*/10000); 
+      // No fiber can run so sleep and wait  
     }
   }
   fiber_mark_completed(manager->maintenance_fiber, NULL);
-  if (manager->maintenance_fiber != manager->thread_fiber) {
+  if (manager->maintenance_fiber != manager->thread_fiber) { 
     while (1) {
       if (pthread_equal(pthread_self(), fiber_manager_threads[0])) {
         fiber_manager_switch_to(manager, manager->maintenance_fiber,
@@ -228,7 +243,9 @@ int fiber_manager_init(size_t num_threads) {
   this_thread = pthread_self();
 
   running = 0;
+
   lock_fiber_d = create_hashmap2d(MAX_LOCKS * MAX_FIBS); // wasteful but can be fixed
+  locks_to_indices = hashmap_create();
   fiber_spinlock_init(&m1);
 
   if (fiber_manager_get_state() != FIBER_MANAGER_STATE_NONE) {
@@ -351,7 +368,6 @@ void fiber_manager_do_maintenance() {
   }
 
   if (manager->done_fiber) {
-    printf("Fiber Done \n");
     fiber_destroy(manager->done_fiber);
     manager->done_fiber = NULL;
   }
@@ -608,13 +624,13 @@ void set_lock_fiber_data(void* lock, struct timeval* ban_time, struct timeval* t
   if (ban_time != NULL) {
       lock_stats->banned_until = *ban_time;
   } else {
-      lock_stats->banned_until = (struct timeval){0,0};
+      lock_stats->banned_until = (struct timeval){0,0}; // default ban time is not banned 
   }
 
   if (time_slice != NULL) {
       lock_stats->slice_size = *time_slice;
   } else {
-      lock_stats->slice_size = (struct timeval){0,0};
+      lock_stats->slice_size = (struct timeval){0, 200}; // Standard slice time
   }
 
   insert(lock_fiber_d, (void*)cur_fiber, lock, lock_stats);
@@ -635,26 +651,32 @@ lock_stats_t* get_lock_fiber_data(void* lock) {
 
 
 
-void set_fiber_colour(int index, void* lock){
+void set_fiber_colour( void* lock){
   fiber_manager_t *manager = fiber_manager_get();
   fiber_t* f = manager->current_fiber;
+  int lock_index = get_lock_index(lock);
 
-  if (((f->bitcolour) & (1 << index)) ==
-      0) {  // This means if this is 0 then lock has been previously recorded
+  if (((f->bitcolour) & (1 << lock_index)) == 0) {  // This means if this is 1 then lock has been previously recorded
     printf("Recording a lock \n");
-    set_colour(f, 0, lock);
-
-    struct timeval slice;
-    slice.tv_sec  = 0;
-    slice.tv_usec = 200;
-
-    struct timeval baned_until;
-    baned_until.tv_sec = 0;
-    baned_until.tv_usec = 0;
+    set_colour(f, lock_index, lock);
     
-    set_lock_fiber_data(lock, &baned_until, &slice);
+    set_lock_fiber_data(lock, NULL, NULL);
 
-    fiber_yield(); // we yield after setting the fiber colour for the first time for a lock
+    fiber_yield(); 
+    // we yield after setting the fiber colour for the first time for a lock
     // CAN BE WRONG LOGIC FOR SOME PROGRAMMES WITH ONE TIME USE LOCKS
   }
+}
+
+// Hashmao for lock index 
+
+int get_lock_index(void* lock) {
+    int index;
+    if (!hashmap_get(locks_to_indices, lock, &index)) {
+      fiber_spinlock_lock(&m1);
+      index = current_lock_index++;
+      fiber_spinlock_unlock(&m1);
+      hashmap_put(locks_to_indices, lock, index);
+    }
+    return index;
 }
