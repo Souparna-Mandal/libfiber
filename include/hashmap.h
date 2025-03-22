@@ -5,12 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <fiber_lock_stats.h>
 
 typedef struct entry {
     void *fiber;
     void *lock;
-    lock_stats_t *value;
+    unsigned long long value;
     struct entry *next;
 } entry;
 
@@ -22,8 +21,8 @@ typedef struct {
 // Prototypes only:
 unsigned int hash2d(void *fiber, void *lock, int table_size);
 hashmap2d *create_hashmap2d(int table_size);
-void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value);
-int get(hashmap2d *hm, void *fiber, void *lock, lock_stats_t **value_out);
+void insert(hashmap2d *hm, void *fiber, void *lock, unsigned long long value);
+int get(hashmap2d *hm, void *fiber, void *lock, unsigned long long *value_out);
 void free_hashmap(hashmap2d *hm);
 
 #endif

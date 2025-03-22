@@ -237,22 +237,6 @@ int fiber_detach(fiber_t* f) {
   return FIBER_SUCCESS;
 }
 
-  /* Lock Stats for Scheduler-v2 */
-  
-  // lock_stats_t* get_lock_stats(fiber_t* fiber){
-  //   return fiber -> fiber_stats;
-  // }
-
-  
-  // void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size){
-  //   if (banned_until != NULL)
-  //   {
-  //     (fiber->fiber_stats)->banned_until = *banned_until;}
-  //   if (slice_size != NULL){
-  //     (fiber->fiber_stats)->slice_size = *slice_size;}
-  // }
-
-
 colours_t get_colour(fiber_t* f) { return f->bitcolour; }
 
 void set_colour(fiber_t* f, int index, void* lock) {

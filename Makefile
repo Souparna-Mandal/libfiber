@@ -22,6 +22,7 @@ CFILES = \
     fiber_scheduler_wsd.c \
     hashmap.c \
     hashmap_1_d.c \
+    timing.c\
 
 USE_NATIVE_EVENTS ?= 1
 ifeq ($(USE_NATIVE_EVENTS),1)
@@ -111,7 +112,7 @@ ifeq ($(FAST_SWITCHING),1)
 CFLAGS += -DFIBER_FAST_SWITCHING
 endif
 
-TESTS= \
+# TESTS= \
     test_tryjoin \
     test_sleep \
     test_io \

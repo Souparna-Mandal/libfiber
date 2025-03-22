@@ -106,11 +106,9 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
 
   int i = 0;
   while ((size > 0) && (i < size)) {
-    // fiber_t* const new_fiber =
-    //     (fiber_t*)wsd_work_stealing_deque_pop_bottom(scheduler->schedule_from);
     fiber_t* new_fiber;
     if ((new_fiber = wsd_work_stealing_deque_peek_bottom(scheduler->schedule_from, i)) == NULL ){
-      break; // End of dequeue
+      break; // End of dequeue as no ore fibers 
     }
     if (is_fiber_runable(new_fiber, lock_fiber_d, running)) {
       wsd_work_stealing_deque_pop_at(scheduler->schedule_from, i);
@@ -119,6 +117,8 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
           wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber); 
         } 
         else {
+          // Set the Colour for the new Fiber
+          *running = *running | (new_fiber->bitcolour);  
           return new_fiber;
         }
       }
@@ -175,10 +175,11 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
 /* New Function for Libcolour + SCL Implementation*/
 
 int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running){
-  lock_stats_t* lock_stat;
+  unsigned long long  banned_until;
   colours_t fib_colour = get_colour(fiber);
+  colours_t current_running = atomic_load_explicit((atomic_uint*)running, memory_order_acquire);
 
-  if (fib_colour & (*running)) {  // if it is 0 then its runable
+  if (fib_colour & current_running) {  // if it is 0 then its runable
     // int val = (int) (fib_colour & (*running));
     // printf("fib_colour & (*running) gives us %d \n", val);
      return 0;  // Not runable
@@ -188,6 +189,7 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
   // get the current time in microseconds + seconds as a timeval struct
   struct timeval now;
   gettimeofday(&now, NULL);
+  unsigned long long now_usec = timeval_to_ull(now);
 
   int num_locks = get_num_locks(fiber) + 1; // gives -1 for no locks, and the highest index
   if (num_locks == 0){ //No locks registered then allow to run
@@ -195,9 +197,9 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
     return 1;
   }
   for (int i = 0; i < num_locks; i++) {
-    if (get(lock_fiber_d, (void*)fiber, locks[i], &lock_stat)){
-      // printf("The  ban time is Seconds: %ld, Microseconds: %ld\n", (long)&lock_stat->banned_until.tv_sec, (long)&lock_stat->banned_until.tv_usec);
-      if (timercmp(&now, &lock_stat->banned_until, <)) { // The Fiber is Banned from Using at least one Lock
+    if (get(lock_fiber_d, (void*)fiber, locks[i], &banned_until)){
+      // printf("The  ban time is Microseconds: %lld \n", banned_until );
+      if (now_usec < banned_until) { // The Fiber is Banned from Using at least one Lock
         //printf("Fiber is Banned \n");
         return 0;
       }

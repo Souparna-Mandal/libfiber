@@ -8,7 +8,7 @@
 
 #include "fiber_context.h"
 #include "mpsc_fifo.h"
-#include "fiber_lock_stats.h"
+#include "timing.h"
 #include "hashmap.h"
 #include "hashmap_1_d.h"
 

@@ -49,7 +49,7 @@ hashmap2d *create_hashmap2d(int table_size) {
 }
 
 // 3) Implement insert
-void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value) {
+void insert(hashmap2d *hm, void *fiber, void *lock, unsigned long long value) {
     unsigned int index = hash2d(fiber, lock, hm->table_size);
     entry *current = hm->entries[index];
 
@@ -59,8 +59,8 @@ void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value) {
             current->value = value;
             return;
         }
-        current = current->next;
-    }
+        current = current->next; 
+    } // why a while loop here  TODO
 
     // Not found: create a new entry
     entry *new_entry = malloc(sizeof(entry));
@@ -76,12 +76,12 @@ void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value) {
 }
 
 // 4) Implement get
-int get(hashmap2d *hm, void *fiber, void *lock, lock_stats_t **value_out) {
+int get(hashmap2d *hm, void *fiber, void *lock, unsigned long long *value_out) {
     unsigned int index = hash2d(fiber, lock, hm->table_size);
     entry *current = hm->entries[index];
     while (current) {
         if (current->fiber == fiber && current->lock == lock) {
-            *value_out = current->value;
+            value_out = &current->value; // address of the ull 
             return 1;
         }
         current = current->next;

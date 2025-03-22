@@ -9,10 +9,10 @@
 
 int send_count = 100000;
 
-int64_t time_diff(const struct timespec* start, const struct timespec* end) {
-  return (end->tv_sec * 1000000000LL + end->tv_nsec) -
-         (start->tv_sec * 1000000000LL + start->tv_nsec);
-}
+// int64_t time_diff(const struct timespec* start, const struct timespec* end) {
+//   return (end->tv_sec * 1000000000LL + end->tv_nsec) -
+//          (start->tv_sec * 1000000000LL + start->tv_nsec);
+// }
 
 void receiver(fiber_multi_channel_t* ch) {
   fiber_t* this_fiber = fiber_manager_get()->current_fiber;

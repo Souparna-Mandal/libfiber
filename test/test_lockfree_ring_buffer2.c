@@ -6,10 +6,10 @@
 #include "lockfree_ring_buffer.h"
 #include "test_helper.h"
 
-int64_t time_diff(const struct timespec* start, const struct timespec* end) {
-  return (end->tv_sec * 1000000000LL + end->tv_nsec) -
-         (start->tv_sec * 1000000000LL + start->tv_nsec);
-}
+// int64_t time_diff(const struct timespec* start, const struct timespec* end) {
+//   return (end->tv_sec * 1000000000LL + end->tv_nsec) -
+//          (start->tv_sec * 1000000000LL + start->tv_nsec);
+// }
 
 #define PER_THREAD_COUNT 300000
 #define NUM_THREADS 2
