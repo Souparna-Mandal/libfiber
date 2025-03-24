@@ -59,6 +59,7 @@ fiber_go_function(void* param) {
   fiber_manager_do_maintenance();
 
   void* const result = the_fiber->run_function(the_fiber->param);
+  unset_colour();
   printf("Fiber is complete \n");
 
   fiber_join_routine(the_fiber, result);

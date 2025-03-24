@@ -129,10 +129,6 @@ void fiber_manager_yield(fiber_manager_t* manager) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
       }
-      fiber_spinlock_lock(&m1);
-      running = running & ~(current_fiber->bitcolour);
-      fiber_spinlock_unlock(&m1);
-
       fiber_manager_switch_to(manager, current_fiber,
                               manager->maintenance_fiber);
       // re-grab the manager, since we could be on a different thread now
