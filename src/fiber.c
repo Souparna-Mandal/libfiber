@@ -18,7 +18,8 @@ atomic_int total_fiber_count = 0;
 
 void fiber_mark_completed(fiber_t* the_fiber, void* result) {
   atomic_store_explicit(&the_fiber->result, result, memory_order_release);
-
+  
+  // we need to unset colours for sure 
   if (the_fiber->detach_state != FIBER_DETACH_DETACHED) {
     const int old_state =
         atomic_exchange(&the_fiber->detach_state, FIBER_DETACH_WAIT_FOR_JOINER);
@@ -58,6 +59,7 @@ fiber_go_function(void* param) {
   fiber_manager_do_maintenance();
 
   void* const result = the_fiber->run_function(the_fiber->param);
+  printf("Fiber is complete \n");
 
   fiber_join_routine(the_fiber, result);
 
@@ -89,7 +91,7 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id += 1;
-  ret->is_colour_freed = 0;
+  ret->kill_colour = 0;
   if (FIBER_SUCCESS !=
       fiber_context_init(&ret->context, stack_size, &fiber_go_function, ret)) {
     free(ret);
@@ -132,7 +134,7 @@ fiber_t* fiber_create_from_thread() {
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id = 1;
-  ret->is_colour_freed = 0;
+  ret->kill_colour = 0;
   if (FIBER_SUCCESS != fiber_context_init_from_thread(&ret->context)) {
     free(ret);
     return NULL;
@@ -236,22 +238,6 @@ int fiber_detach(fiber_t* f) {
   }
   return FIBER_SUCCESS;
 }
-
-  /* Lock Stats for Scheduler-v2 */
-  
-  // lock_stats_t* get_lock_stats(fiber_t* fiber){
-  //   return fiber -> fiber_stats;
-  // }
-
-  
-  // void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size){
-  //   if (banned_until != NULL)
-  //   {
-  //     (fiber->fiber_stats)->banned_until = *banned_until;}
-  //   if (slice_size != NULL){
-  //     (fiber->fiber_stats)->slice_size = *slice_size;}
-  // }
-
 
 colours_t get_colour(fiber_t* f) { return f->bitcolour; }
 

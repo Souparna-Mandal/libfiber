@@ -10,7 +10,7 @@
 typedef struct entry {
     void *fiber;
     void *lock;
-    lock_stats_t *value;
+    lock_stats_t value;
     struct entry *next;
 } entry;
 
@@ -22,8 +22,8 @@ typedef struct {
 // Prototypes only:
 unsigned int hash2d(void *fiber, void *lock, int table_size);
 hashmap2d *create_hashmap2d(int table_size);
-void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value);
-int get(hashmap2d *hm, void *fiber, void *lock, lock_stats_t **value_out);
+void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t value);
+int get(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value_out);
 void free_hashmap(hashmap2d *hm);
 
 #endif

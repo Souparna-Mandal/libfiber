@@ -49,19 +49,19 @@ hashmap2d *create_hashmap2d(int table_size) {
 }
 
 // 3) Implement insert
-void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value) {
+void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t value) {
+    // because of pass by value we are good 
     unsigned int index = hash2d(fiber, lock, hm->table_size);
     entry *current = hm->entries[index];
 
     // Check if an entry with the same fiber & lock already exists
     while (current) {
         if (current->fiber == fiber && current->lock == lock) {
-            current->value = value;
-            return;
+          current->value = value;
+          return;
         }
         current = current->next;
     }
-
     // Not found: create a new entry
     entry *new_entry = malloc(sizeof(entry));
     if (!new_entry) {
@@ -76,17 +76,17 @@ void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value) {
 }
 
 // 4) Implement get
-int get(hashmap2d *hm, void *fiber, void *lock, lock_stats_t **value_out) {
+int get(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value_out) {
     unsigned int index = hash2d(fiber, lock, hm->table_size);
     entry *current = hm->entries[index];
     while (current) {
         if (current->fiber == fiber && current->lock == lock) {
-            *value_out = current->value;
+            *value_out = current->value; // we assign the same value so memcpy in a way 
             return 1;
         }
         current = current->next;
     }
-    return 0; // not found
+    return 0;  // not found
 }
 
 // 5) Implement free_hashmap

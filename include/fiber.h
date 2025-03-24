@@ -46,9 +46,9 @@ typedef struct fiber {
                            // mechanisms do not conflict! (ie. only use scratch
                            // while a fiber is sleeping/waiting)
   void* locks[MAX_LOCKS];
-  int is_colour_freed;
   int num_locks;
   colours_t bitcolour;
+  int kill_colour;
 } fiber_t;
 
 

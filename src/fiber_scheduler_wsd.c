@@ -119,6 +119,8 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
           wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber); 
         } 
         else {
+            // Set the Colour of the fiber we will be sheduling 
+          *running = *running | (new_fiber->bitcolour); 
           return new_fiber;
         }
       }
@@ -175,7 +177,7 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
 /* New Function for Libcolour + SCL Implementation*/
 
 int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running){
-  lock_stats_t* lock_stat;
+  lock_stats_t lock_stat;
   colours_t fib_colour = get_colour(fiber);
 
   if (fib_colour & (*running)) {  // if it is 0 then its runable
@@ -191,13 +193,13 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
 
   int num_locks = get_num_locks(fiber) + 1; // gives -1 for no locks, and the highest index
   if (num_locks == 0){ //No locks registered then allow to run
-    printf(" No locks registered Yet \n");
+    // printf(" No locks registered Yet \n");
     return 1;
   }
   for (int i = 0; i < num_locks; i++) {
     if (get(lock_fiber_d, (void*)fiber, locks[i], &lock_stat)){
       // printf("The  ban time is Seconds: %ld, Microseconds: %ld\n", (long)&lock_stat->banned_until.tv_sec, (long)&lock_stat->banned_until.tv_usec);
-      if (timercmp(&now, &lock_stat->banned_until, <)) { // The Fiber is Banned from Using at least one Lock
+      if (timercmp(&now, &lock_stat.banned_until, <)) { // The Fiber is Banned from Using at least one Lock
         //printf("Fiber is Banned \n");
         return 0;
       }
