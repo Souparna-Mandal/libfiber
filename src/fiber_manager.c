@@ -49,6 +49,7 @@ int current_lock_index = 0;
 hashmap_t* locks_to_indices;
 colours_t running;
 fiber_spinlock_t m1;
+fiber_spinlock_t m2;
 
 void fiber_destroy(fiber_t* f) {
   if (f) {
@@ -115,8 +116,10 @@ void fiber_manager_yield(fiber_manager_t* manager) {
     const fiber_state_t state = current_fiber->state;
 
     fiber_spinlock_lock(&m1);
+    //fiber_rwlock_rdlock(&mutex);
     fiber_t* const new_fiber =
         fiber_scheduler_next(manager->scheduler, lock_fiber_d, &running);
+    //fiber_rwlock_rdunlock(&mutex);
     fiber_spinlock_unlock(&m1);
 
     if (new_fiber) {
@@ -143,7 +146,11 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       if (is_fiber_runable(current_fiber, lock_fiber_d, &running)) {
         // occasionally steal some work from threads with more load
         fiber_spinlock_lock(&m1);
+        //fiber_rwlock_wrlock(&mutex);
+        // pthread_spin_lock(&scheduler_spinlock);  
         running = running | current_fiber->bitcolour;
+        // pthread_spin_unlock(&scheduler_spinlock);
+        //fiber_rwlock_wrunlock(&mutex);
         fiber_spinlock_unlock(&m1);
         break;
       }
@@ -183,7 +190,7 @@ static void* fiber_manager_thread_func(void* param) {
   if (!manager->maintenance_fiber) {
     manager->maintenance_fiber = manager->thread_fiber;
     // should_check_events = true;
-    should_check_events = true;
+    should_check_events = false;
     this_thread = pthread_self();
   }
 
@@ -192,9 +199,10 @@ static void* fiber_manager_thread_func(void* param) {
     fiber_scheduler_load_balance(manager->scheduler);
 
     fiber_spinlock_lock(&m1);
+    //fiber_rwlock_rdlock(&mutex);
     fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, lock_fiber_d, &running);
+    //fiber_rwlock_rdunlock(&mutex);
     fiber_spinlock_unlock(&m1);
-
     if (new_fiber) {
       // make this fiber wait so we aren't scheduled again until all work is done
       manager->maintenance_fiber->state = FIBER_STATE_SAVING_STATE_TO_WAIT;
@@ -219,9 +227,11 @@ static void* fiber_manager_thread_func(void* param) {
         fiber_manager_switch_to(manager, manager->maintenance_fiber,
                                 manager->thread_fiber);
       }
-      fiber_spinlock_lock(&m1);
-      fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, lock_fiber_d, &running);
-      fiber_spinlock_unlock(&m1);
+    fiber_spinlock_lock(&m1);
+    //fiber_rwlock_rdlock(&mutex);
+    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, lock_fiber_d, &running);
+    //fiber_rwlock_rdunlock(&mutex);
+    fiber_spinlock_unlock(&m1);
       if (new_fiber && new_fiber != manager->maintenance_fiber) {
         fiber_manager_switch_to(manager, manager->maintenance_fiber, new_fiber);
       }
@@ -242,6 +252,10 @@ int fiber_manager_init(size_t num_threads) {
   lock_fiber_d = create_hashmap2d(MAX_LOCKS * MAX_FIBS); // wasteful but can be fixed
   locks_to_indices = hashmap_create();
   fiber_spinlock_init(&m1);
+  fiber_spinlock_init(&m2);
+  // fiber_rwlock_init(&mutex);
+  // pthread_spin_init(&scheduler_spinlock, PTHREAD_PROCESS_PRIVATE);
+  // pthread_spin_init(&shared_ds_lock, PTHREAD_PROCESS_PRIVATE);
 
   if (fiber_manager_get_state() != FIBER_MANAGER_STATE_NONE) {
     errno = EINVAL;
@@ -646,19 +660,25 @@ void set_fiber_colour(void* lock, int slice_size_us){
 
 int get_lock_index(void* lock) {
     int index;
-    fiber_spinlock_lock(&m1);
+    fiber_spinlock_lock(&m2);
+    // pthread_spin_lock(&shared_ds_lock);
     if (!hashmap_get(locks_to_indices, lock, &index)) {
       index = current_lock_index++;
       hashmap_put(locks_to_indices, lock, index);
     }
-    fiber_spinlock_unlock(&m1);
+    fiber_spinlock_unlock(&m2);
+    // pthread_spin_unlock(&shared_ds_lock);
     return index;
 }
 
 void unset_colour() {
   fiber_manager_t* manager = fiber_manager_get();
   colours_t curr_colour = manager->current_fiber->bitcolour;
+  // pthread_spin_lock(&scheduler_spinlock);
   fiber_spinlock_lock(&m1);
+  //fiber_rwlock_wrlock(&mutex);
   running = running & ~curr_colour;
+  //fiber_rwlock_wrunlock(&mutex);
   fiber_spinlock_unlock(&m1);
+  // pthread_spin_unlock(&scheduler_spinlock);
 }

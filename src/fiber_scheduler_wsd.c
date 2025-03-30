@@ -120,7 +120,9 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
         } 
         else {
             // Set the Colour of the fiber we will be sheduling 
+          // pthread_spin_lock(&scheduler_spinlock); 
           *running = *running | (new_fiber->bitcolour); 
+          // pthread_spin_unlock(&scheduler_spinlock);
           return new_fiber;
         }
       }
@@ -179,10 +181,9 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
 int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running){
   lock_stats_t lock_stat;
   colours_t fib_colour = get_colour(fiber);
-
+  // pthread_spin_lock(&scheduler_spinlock);
   if (fib_colour & (*running)) {  // if it is 0 then its runable
-    // int val = (int) (fib_colour & (*running));
-    // printf("fib_colour & (*running) gives us %d \n", val);
+    //  pthread_spin_unlock(&scheduler_spinlock);
      return 0;  // Not runable
   }
   void** locks = get_locks(fiber);
@@ -194,6 +195,7 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
   int num_locks = get_num_locks(fiber) + 1; // gives -1 for no locks, and the highest index
   if (num_locks == 0){ //No locks registered then allow to run
     // printf(" No locks registered Yet \n");
+    // pthread_spin_unlock(&scheduler_spinlock);
     return 1;
   }
   for (int i = 0; i < num_locks; i++) {
@@ -201,10 +203,11 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
       // printf("The  ban time is Seconds: %ld, Microseconds: %ld\n", (long)&lock_stat->banned_until.tv_sec, (long)&lock_stat->banned_until.tv_usec);
       if (timercmp(&now, &lock_stat.banned_until, <)) { // The Fiber is Banned from Using at least one Lock
         //printf("Fiber is Banned \n");
+        // pthread_spin_unlock(&scheduler_spinlock);
         return 0;
       }
     }
   }
-
+  // pthread_spin_unlock(&scheduler_spinlock);
   return 1;
 }

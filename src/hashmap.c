@@ -5,28 +5,18 @@
 #include <stdint.h>
 #include <string.h> // if needed
 
-// 1) Implement hash2d
+// 1) Implement a simpler hash2d
 unsigned int hash2d(void *fiber, void *lock, int table_size) {
-    uint64_t hash = 14695981039346656037ULL;
-    uint64_t fnv_prime = 1099511628211ULL;
+    // Cast both pointers to an integer type
+    uintptr_t f = (uintptr_t) fiber;
+    uintptr_t l = (uintptr_t) lock;
 
-    // Process fiber pointer
-    uint64_t fiber_val = (uint64_t) fiber;
-    for (int i = 0; i < 8; i++) {
-        uint8_t byte = (fiber_val >> (i * 8)) & 0xFF;
-        hash ^= byte;
-        hash *= fnv_prime;
-    }
+    // Simple approach: shift one pointer and XOR
+    // This combines the two pointers into a single hash value
+    uintptr_t combined = f ^ (l << 1);
 
-    // Process lock pointer
-    uint64_t lock_val = (uint64_t) lock;
-    for (int i = 0; i < 8; i++) {
-        uint8_t byte = (lock_val >> (i * 8)) & 0xFF;
-        hash ^= byte;
-        hash *= fnv_prime;
-    }
-
-    return (unsigned int)(hash % table_size);
+    // Finally, take modulo with table_size
+    return (unsigned int)(combined % table_size);
 }
 
 // 2) Implement create_hashmap2d
@@ -50,18 +40,18 @@ hashmap2d *create_hashmap2d(int table_size) {
 
 // 3) Implement insert
 void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t value) {
-    // because of pass by value we are good 
     unsigned int index = hash2d(fiber, lock, hm->table_size);
     entry *current = hm->entries[index];
 
     // Check if an entry with the same fiber & lock already exists
     while (current) {
         if (current->fiber == fiber && current->lock == lock) {
-          current->value = value;
-          return;
+            current->value = value;  // update existing
+            return;
         }
         current = current->next;
     }
+
     // Not found: create a new entry
     entry *new_entry = malloc(sizeof(entry));
     if (!new_entry) {
@@ -79,10 +69,11 @@ void insert(hashmap2d *hm, void *fiber, void *lock, lock_stats_t value) {
 int get(hashmap2d *hm, void *fiber, void *lock, lock_stats_t *value_out) {
     unsigned int index = hash2d(fiber, lock, hm->table_size);
     entry *current = hm->entries[index];
+
     while (current) {
         if (current->fiber == fiber && current->lock == lock) {
-            *value_out = current->value; // we assign the same value so memcpy in a way 
-            return 1;
+            *value_out = current->value;
+            return 1;  // found
         }
         current = current->next;
     }
