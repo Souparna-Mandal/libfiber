@@ -22,6 +22,8 @@ CFILES = \
     fiber_scheduler_wsd.c \
     hashmap.c \
     hashmap_1_d.c \
+    timing.c \
+    fiber_schedlock.c \
 
 USE_NATIVE_EVENTS ?= 1
 ifeq ($(USE_NATIVE_EVENTS),1)

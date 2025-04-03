@@ -12,7 +12,9 @@ extern "C" {
 
 typedef void* fiber_scheduler_t;
 
-int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running); // check the colour, and if any of the 
+int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running); // check the colour, and if any of the
+
+void try_free_expired_slices(int num_locks, void** locks, colours_t* running) ;
 
 int fiber_scheduler_init(size_t num_threads);
 

@@ -148,7 +148,7 @@ extern void set_fiber_colour(void* lock, int slice_size);
 extern lock_stats_t* get_lock_fiber_data(void* lock, lock_stats_t* lock_stat);
 
 extern void set_lock_fiber_data(void* lock, struct timeval ban_time,
-                                struct timeval time_slice);
+                                struct timeval time_slice, fiber_t* fiber);
 extern int get_lock_index(void* lock);
 
 void unset_colour();

@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <fiber_lock_stats.h>
+#include "fiber_lock_stats.h"
 
 typedef struct entry {
     void *fiber;
