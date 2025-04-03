@@ -6,7 +6,8 @@ void sched_lock_init(struct sched_lock *lock)
     lock->start_ticks = (struct timeval){0, 0};
     lock->end_ticks = (struct timeval){0, 0};
     lock->slice_end_time = (struct timeval){0, 0};
-    lock->slice_set = 0; // can be used to track is lock is held 
+    lock->slice_set = 0; // can be used to track is lock is held
+    lock->lock_held = 0;
     lock->lock_stat = malloc(sizeof(lock_stats_t));
     lock->lock_stat->banned_until = (struct timeval){0, 0};
     lock->lock_stat->slice_size = (struct timeval){0, 0};
@@ -21,15 +22,15 @@ void sched_lock_acquire(struct sched_lock *lock)
 
     // Colour if UnColoured and Record Lock.
     set_fiber_colour((void*)lock, SLICE_SIZE_US);
-    
+    lock->lock_held = 1;
     // Lock the underlying mutex.
     // fiber_mutex_lock(&lock->mutex);
     // fiber_spinlock_lock(&lock->spinlock);
 
     if (lock->slice_set == 0){
         // Record the start time.
+
         gettimeofday(&lock->start_ticks, NULL);
-        
         // Retrieve the fiber's lock statistics.
         if (get_lock_fiber_data((void*)lock, lock->lock_stat) == 0){
             printf("Error: No Stats, something is wrong.\n");
@@ -49,13 +50,15 @@ void sched_lock_release(struct sched_lock *lock)
     // fiber_spinlock_unlock(&lock->spinlock);
     gettimeofday(&lock->end_ticks, NULL); // we use the last possible end-ticks 
     if (timercmp(&lock->end_ticks, &lock->slice_end_time,>)){ // enter if slice has expired
-        lock->slice_set = 0;
         lock->holder = NULL;
         unset_colour();
         ban_fibers(lock, NULL);
+        lock->lock_held = 0;
+        lock->slice_set = 0;
         fiber_yield(); // Yield to Allow Others to get resources
         return;
     }
+    lock->lock_held = 0;
     return;
 }
 

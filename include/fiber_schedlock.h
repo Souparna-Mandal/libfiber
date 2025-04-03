@@ -22,6 +22,7 @@ typedef struct sched_lock {
     // fiber_mutex_t mutex;
     // fiber_spinlock_t spinlock;
     lock_stats_t* lock_stat;
+    int lock_held;
     int slice_set;
 
 } sched_lock_t;

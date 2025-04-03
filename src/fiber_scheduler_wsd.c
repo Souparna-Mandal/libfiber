@@ -106,7 +106,8 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
   }
 
   int i = 0;
-  while ((size > 0) && (i < size)) {
+  // while ((size > 0) && (i < size)) {
+  while  (i < size) {
     // fiber_t* const new_fiber =
     //     (fiber_t*)wsd_work_stealing_deque_pop_bottom(scheduler->schedule_from);
     fiber_t* new_fiber;
@@ -129,7 +130,7 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
       }
     }
     i += 1; // increment index for checking
-    size = wsd_work_stealing_deque_size(scheduler->schedule_from);
+    // size = wsd_work_stealing_deque_size(scheduler->schedule_from);
   }
   // printf("NOT SCHEDULING \n");
   
@@ -194,7 +195,11 @@ void try_free_expired_slices(int num_locks, void** locks, colours_t* running) {
         continue;
       }
       // If the current time is later than the slice end time, the slice has expired.
-      if (timercmp(&now, &sched_lock->slice_end_time, >)) {
+
+      // FREE up the slice, if the slice is expires and the lock is not held and the original fiber
+      // did not free up the slice 
+      // This might need to be an tomic operation but we ll see 
+      if ((timercmp(&now, &sched_lock->slice_end_time, >)) & (&sched_lock->lock_held == 0)){
           // Mark the slice as expired.
           sched_lock->slice_set = 0;
 
