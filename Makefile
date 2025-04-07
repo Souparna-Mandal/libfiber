@@ -24,6 +24,7 @@ CFILES = \
     hashmap_1_d.c \
     timing.c \
     fiber_schedlock.c \
+    linked_list.c \
 
 USE_NATIVE_EVENTS ?= 1
 ifeq ($(USE_NATIVE_EVENTS),1)

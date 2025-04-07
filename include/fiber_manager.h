@@ -12,6 +12,7 @@
 #include "mpsc_fifo.h"
 #include "work_stealing_deque.h"
 #include "fiber_rwlock.h"
+#include "fiber_schedlock.h"
 
 typedef struct fiber_mpsc_to_push {
   mpsc_fifo_t* fifo;
@@ -151,7 +152,9 @@ extern void set_lock_fiber_data(void* lock, struct timeval ban_time,
                                 struct timeval time_slice, fiber_t* fiber);
 extern int get_lock_index(void* lock);
 
-void unset_colour();
+void unset_colour(fiber_t* f);
+
+void set_colour(fiber_t* f);
 
 #ifdef __cplusplus
 }

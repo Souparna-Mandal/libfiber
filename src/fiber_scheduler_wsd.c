@@ -123,7 +123,7 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d,
         else {
             // Set the Colour of the fiber we will be sheduling 
           // pthread_spin_lock(&scheduler_spinlock); 
-          *running = *running | (new_fiber->bitcolour); 
+          set_colour(new_fiber);
           // pthread_spin_unlock(&scheduler_spinlock);
           return new_fiber;
         }
@@ -179,41 +179,39 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
 }
 
 /* New Function for Libcolour + SCL Implementation*/
-void try_free_expired_slices(int num_locks, void** locks, colours_t* running) {
+void try_free_expired_slices(int num_locks, LinkedList* locks, colours_t* running) {
   fiber_t* holder;
   struct timeval now;
   gettimeofday(&now, NULL);
 
-
+  Node* current = locks->head;
   for (int i = 0; i < num_locks; i++) {
       // Assume each lock pointer is a pointer to a sched_lock_t structure.
-      sched_lock_t* sched_lock = (sched_lock_t*)locks[i];
+      sched_lock_t* sched_lock = (sched_lock_t*)current->value;
 
       // If the slice is not set, there is nothing to free.
       holder = sched_lock->holder; // should hold the fiber that is holding the lock
       if (holder == NULL){
-        continue;
+        continue; // Can do optimisation where we only go through conflicting colours #TODO
       }
       // If the current time is later than the slice end time, the slice has expired.
 
       // FREE up the slice, if the slice is expires and the lock is not held and the original fiber
       // did not free up the slice 
       // This might need to be an tomic operation but we ll see 
-      if ((timercmp(&now, &sched_lock->slice_end_time, >)) & (&sched_lock->lock_held == 0)){
+      if ((timercmp(&now, &sched_lock->slice_end_time, >)) && (&sched_lock->lock_held == 0)){
           // Mark the slice as expired.
           sched_lock->slice_set = 0;
-
-          // Clear the corresponding bit in the fiber's colour.
-          // We use get_lock_index to determine which bit corresponds to this lock.
           int lock_index = get_lock_index((void*)sched_lock);
           //   TODO COMMENT THIS OUT IF BUGGY
 
-          *running = ~(1 << lock_index); //reset and release slice
-          holder->bitcolour &= ~(1 << lock_index); // reset the lock usage, assume lock is unwanted 
-
           ban_fibers((void*)sched_lock, holder);
           sched_lock->holder = NULL;
+          remove_locks(holder, (void*)sched_lock);
+          holder->bitcolour &= ~(1 << lock_index); // reset the lock usage, assume lock is unwanted
+          *running &= ~(1 << lock_index); //reset and release slice
       }
+      current = current->next;
   }
 }
 
@@ -221,10 +219,13 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
   lock_stats_t lock_stat;
   colours_t fib_colour = get_colour(fiber);
   int num_locks = get_num_locks(fiber) + 1; // gives -1 for no locks, and the highest index
-  void** locks = get_locks(fiber);
-  // pthread_spin_lock(&scheduler_spinlock);
+  LinkedList* locks = get_locks(fiber);
+
+  if (fib_colour == 0){ // Not coloured so schedulable
+    return 1;
+  }
+
   if (fib_colour & (*running)) {  // if it is 0 then its runable
-    //  pthread_spin_unlock(&scheduler_spinlock);
     try_free_expired_slices(num_locks, locks, running);
     return 0;  // Not runable
   }
@@ -234,19 +235,19 @@ int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running
   gettimeofday(&now, NULL);
 
   if (num_locks == 0){ //No locks registered then allow to run
-    // printf(" No locks registered Yet \n");
-    // pthread_spin_unlock(&scheduler_spinlock);
     return 1;
   }
+  Node* current = locks->head;
   for (int i = 0; i < num_locks; i++) {
-    if (get(lock_fiber_d, (void*)fiber, locks[i], &lock_stat)){
+    if (get(lock_fiber_d, (void*)fiber, current->value, &lock_stat)) {
       // printf("The  ban time is Seconds: %ld, Microseconds: %ld\n", (long)&lock_stat->banned_until.tv_sec, (long)&lock_stat->banned_until.tv_usec);
       if (timercmp(&now, &lock_stat.banned_until, <)) { // The Fiber is Banned from Using at least one Lock
-        //printf("Fiber is Banned \n");
+        // printf("Fiber is Banned %p \n", (void*)fiber);
         // pthread_spin_unlock(&scheduler_spinlock);
         return 0;
       }
     }
+    current = current->next;
   }
   // pthread_spin_unlock(&scheduler_spinlock);
   return 1;

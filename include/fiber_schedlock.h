@@ -10,7 +10,7 @@
 // #include "fiber_mutex.h"  
 #include "fiber_spinlock.h"
 
-#define SLICE_SIZE_US 200
+#define SLICE_SIZE_US 100
 
 // static struct timeval inactive_threshold = {1, 0}; 
 
@@ -24,6 +24,7 @@ typedef struct sched_lock {
     lock_stats_t* lock_stat;
     int lock_held;
     int slice_set;
+    atomic_int num_holders;
 
 } sched_lock_t;
 

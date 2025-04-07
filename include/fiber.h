@@ -10,6 +10,7 @@
 #include "mpsc_fifo.h"
 #include "hashmap.h"
 #include "hashmap_1_d.h"
+#include "linked_list.h"
 
 typedef int fiber_state_t;
 
@@ -44,7 +45,7 @@ typedef struct fiber {
   void* volatile scratch;  // to be used by internal fiber mechanisms. be sure
                            // mechanisms do not conflict! (ie. only use scratch
                            // while a fiber is sleeping/waiting)
-  void* locks[MAX_LOCKS];
+  LinkedList* locks;
   int num_locks;
   colours_t bitcolour;
   int kill_colour;
@@ -78,13 +79,17 @@ extern int fiber_yield();
 
 extern int fiber_detach(fiber_t* f);
 
-extern void set_colour(fiber_t* f, int index, void* lock);
+extern void set_fib_colour(fiber_t* f, int index, void* lock);
 
 extern colours_t get_colour(fiber_t* f);
 
-extern void** get_locks(fiber_t* f);
+extern LinkedList* get_locks(fiber_t* f);
 
 extern void add_locks(fiber_t* f, void* lock);
+
+extern void remove_locks(fiber_t* f, void* lock);
+
+extern void remove_fiber_from_locks(fiber_t* f);
 
 extern int get_fiber_count();
 

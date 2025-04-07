@@ -132,6 +132,7 @@ void fiber_manager_yield(fiber_manager_t* manager) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
       }
+      printf(" A fiber is done, running is %lld 20\n", running);
       fiber_manager_switch_to(manager, current_fiber,
                               manager->maintenance_fiber);
       // re-grab the manager, since we could be on a different thread now
@@ -144,9 +145,11 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       // check if the same fiber is runable again
       if (is_fiber_runable(current_fiber, lock_fiber_d, &running)) {
         // occasionally steal some work from threads with more load
-        fiber_spinlock_lock(&m1); 
-        running = running | current_fiber->bitcolour;
+        fiber_spinlock_lock(&m1);
+        set_colour(current_fiber);
         fiber_spinlock_unlock(&m1);
+        current_fiber->kill_colour =
+            1;  // flag to tell if we need to unset colour
         break;
       }
       // Goes here if there are No Fibers suitable to schedulke 
@@ -180,6 +183,7 @@ static void* fiber_manager_thread_func(void* param) {
   fiber_the_manager = (fiber_manager_t*)param;
 
   splitstack_disable_block_signals();
+  printf("A fiber is done so entering waiting thread\n");
 
   fiber_manager_t* manager = (fiber_manager_t*)param;
   if (!manager->maintenance_fiber) {
@@ -367,6 +371,7 @@ void fiber_manager_do_maintenance() {
   }
 
   if (manager->done_fiber) {
+    printf("fiber is done running is %lld \n ", running);
     fiber_destroy(manager->done_fiber);
     manager->done_fiber = NULL;
   }
@@ -641,14 +646,16 @@ void set_fiber_colour(void* lock, int slice_size_us){
 
   if (((f->bitcolour) & (1 << lock_index)) == 0) {  // This means if this is 1 then lock has been previously recorded
     printf("Recording a lock  of index %d\n", lock_index);
-    set_colour(f, lock_index, lock);
+    set_fib_colour(f, lock_index, lock);
     set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, NULL);
-    fiber_yield(); 
+    atomic_fetch_add_explicit(&((sched_lock_t*)lock)->num_holders, 1, memory_order_relaxed);  // increment number of lock holders
+    unset_colour(f); // unset the running colours before as we will yield 
+    fiber_yield();
     // we yield after setting the fiber colour for the first time for a lock
   }
 }
 
-// Hashmao for lock index 
+// Hashmap for lock index 
 
 int get_lock_index(void* lock) {
     int index;
@@ -663,14 +670,36 @@ int get_lock_index(void* lock) {
     return index;
 }
 
-void unset_colour() {
+void set_colour(fiber_t* f){
   fiber_manager_t* manager = fiber_manager_get();
-  colours_t curr_colour = manager->current_fiber->bitcolour;
-  // pthread_spin_lock(&scheduler_spinlock);
-  fiber_spinlock_lock(&m1);
-  //fiber_rwlock_wrlock(&mutex);
-  running = running & ~curr_colour;
-  //fiber_rwlock_wrunlock(&mutex);
-  fiber_spinlock_unlock(&m1);
-  // pthread_spin_unlock(&scheduler_spinlock);
+  colours_t curr_colour;
+  if (f == NULL) {
+    f= manager->current_fiber;
+  }
+  curr_colour = f->bitcolour;
+
+  running = running | curr_colour;
+
+  f->kill_colour = 1;
+
+}
+
+
+void unset_colour(fiber_t* f) {
+  fiber_manager_t* manager = fiber_manager_get();
+  colours_t curr_colour;
+  if (f == NULL) {
+    f= manager->current_fiber;
+  }
+  curr_colour = f->bitcolour;
+  if (f->kill_colour){
+    // pthread_spin_lock(&scheduler_spinlock);
+    fiber_spinlock_lock(&m1);
+    //fiber_rwlock_wrlock(&mutex);
+    running = running & ~curr_colour;
+    //fiber_rwlock_wrunlock(&mutex);
+    fiber_spinlock_unlock(&m1);
+    // pthread_spin_unlock(&scheduler_spinlock);
+    f->kill_colour = 0; // The colour is unset 
+  }
 }
