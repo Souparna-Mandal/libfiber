@@ -8,6 +8,8 @@
 
 #include "fiber_context.h"
 #include "mpsc_fifo.h"
+#include "linked_list.h"
+#include "lock_stats.h"
 
 typedef int fiber_state_t;
 
@@ -23,8 +25,15 @@ struct fiber_manager;
 #define FIBER_DETACH_WAIT_FOR_JOINER (1)
 #define FIBER_DETACH_WAIT_TO_JOIN (2)
 #define FIBER_DETACH_DETACHED (3)
+#define MAX_FIBS (1000)
+#define MAX_LOCKS (64)
 
 typedef struct fiber {
+  uint64_t bitcolour;
+  LinkedList* locks;
+  uint64_t fiber_id; 
+  long long int count;
+
   volatile fiber_state_t state;
   fiber_run_function_t run_function;
   void* param;
@@ -62,6 +71,18 @@ extern int fiber_tryjoin(fiber_t* f, void** result);
 extern int fiber_yield();
 
 extern int fiber_detach(fiber_t* f);
+
+void set_fib_colour(fiber_t* f, int index, void* lock);
+void remove_fiber_from_locks(fiber_t* f);
+int get_lock_index(void* lock);
+void set_lock_fiber_data(void* lock, struct timeval ban_time,
+                         struct timeval time_slice, fiber_t* fiber);
+lock_stats_t* get_lock_fiber_data(void* lock, lock_stats_t* lock_stat,
+                                  fiber_t* f);
+void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f);
+void add_locks(fiber_t* f, void* lock);
+void remove_locks(fiber_t* f, void* lock);
+LinkedList* get_locks(fiber_t* f);
 
 #ifdef __cplusplus
 }

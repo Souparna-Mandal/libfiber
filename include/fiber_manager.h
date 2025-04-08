@@ -11,6 +11,8 @@
 #include "mpmc_fifo.h"
 #include "mpsc_fifo.h"
 #include "work_stealing_deque.h"
+#include <stdint.h>
+
 
 typedef struct fiber_mpsc_to_push {
   mpsc_fifo_t* fifo;

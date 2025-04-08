@@ -101,11 +101,15 @@ void fiber_manager_yield(fiber_manager_t* manager) {
   assert(manager);
 
   fiber_t* const current_fiber = manager->current_fiber;
+  if (current_fiber){
+    reset_colour_scheduling_fiber(current_fiber->bitcolour); //reset colour
+  }
+  
   while (1) {
     manager->yield_count += 1;
     const fiber_state_t state = current_fiber->state;
 
-    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
+    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, current_fiber);
     if (new_fiber) {
       fiber_manager_switch_to(manager, current_fiber, new_fiber);
       break;
@@ -125,7 +129,9 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       if ((manager->yield_count & 1023) == 0) {
         fiber_scheduler_load_balance(manager->scheduler);
       }
-      break;
+      if (is_fiber_runable(current_fiber)){ // retursn 1 for runable and 0 for now 
+        break;
+      }
     }
   }
 }
@@ -163,7 +169,7 @@ static void* fiber_manager_thread_func(void* param) {
   while (!fiber_shutting_down) {
     fiber_scheduler_load_balance(manager->scheduler);
 
-    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
+    fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, NULL);
     if (new_fiber) {
       // make this fiber wait so we aren't scheduled again until all work is
       // done
@@ -185,7 +191,7 @@ static void* fiber_manager_thread_func(void* param) {
         fiber_manager_switch_to(manager, manager->maintenance_fiber,
                                 manager->thread_fiber);
       }
-      fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler);
+      fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, NULL);
       if (new_fiber && new_fiber != manager->maintenance_fiber) {
         fiber_manager_switch_to(manager, manager->maintenance_fiber, new_fiber);
       }
@@ -197,7 +203,7 @@ static void* fiber_manager_thread_func(void* param) {
 int fiber_manager_init(size_t num_threads) {
   splitstack_disable_block_signals();
   fiber_shutting_down = 0;
-  should_check_events = true;
+  should_check_events = false;
   this_thread = pthread_self();
 
   if (fiber_manager_get_state() != FIBER_MANAGER_STATE_NONE) {
@@ -209,6 +215,13 @@ int fiber_manager_init(size_t num_threads) {
   if (!sched_ret) {
     return FIBER_ERROR;
   }
+
+  colours = 0;
+  pthread_spin_init(&scheduler_spinlock, PTHREAD_PROCESS_PRIVATE);
+  fiber_spinlock_init(&lock_index);
+  lock_fiber_d = create_hashmap2d(MAX_LOCKS * MAX_FIBS);
+  locks_to_indices = hashmap_create();
+  current_lock_index = 0;
 
   assert(!fiber_manager_threads);
   fiber_manager_threads = calloc(num_threads, sizeof(*fiber_manager_threads));

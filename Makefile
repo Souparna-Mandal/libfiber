@@ -20,6 +20,12 @@ CFILES = \
     work_stealing_deque.c \
     work_queue.c \
     fiber_scheduler_wsd.c \
+    linked_list.c \
+    fiber_schedlock.c \
+    timing.c \
+    hashmap-lock-fiber.c \
+    hashmap-lock-index.c \
+
 
 USE_NATIVE_EVENTS ?= 1
 ifeq ($(USE_NATIVE_EVENTS),1)

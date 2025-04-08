@@ -8,12 +8,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <stdint.h>
+#include "fiber_scheduler.h"
+#include "fiber_schedlock.h"
+
+static uint fiber_global_id = 0;
+hashmap_t* locks_to_indices;
+hashmap2d* lock_fiber_d;
+int current_lock_index;
 
 #include "fiber_manager.h"
 #include "mpmc_lifo.h"
 
 void fiber_mark_completed(fiber_t* the_fiber, void* result) {
   atomic_store_explicit(&the_fiber->result, result, memory_order_release);
+  reset_colour_scheduling_fiber(the_fiber->bitcolour); // reset colour 
 
   if (the_fiber->detach_state != FIBER_DETACH_DETACHED) {
     const int old_state =
@@ -81,6 +91,8 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id += 1;
+  ret->bitcolour = 0;
+  ret->locks = llist_create();
   if (FIBER_SUCCESS !=
       fiber_context_init(&ret->context, stack_size, &fiber_go_function, ret)) {
     free(ret);
@@ -94,6 +106,8 @@ fiber_t* fiber_create(size_t stack_size, fiber_run_function_t run_function,
                       void* param) {
   fiber_t* const ret = fiber_create_no_sched(stack_size, run_function, param);
   if (ret) {
+    ret->fiber_id = ++fiber_global_id;
+    ret->count = 0;
     fiber_manager_schedule(fiber_manager_get(), ret);
   }
   return ret;
@@ -117,6 +131,8 @@ fiber_t* fiber_create_from_thread() {
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id = 1;
+  ret->bitcolour = 0;
+  ret->locks = llist_create();
   if (FIBER_SUCCESS != fiber_context_init_from_thread(&ret->context)) {
     free(ret);
     return NULL;
@@ -219,4 +235,89 @@ int fiber_detach(fiber_t* f) {
     return FIBER_ERROR;
   }
   return FIBER_SUCCESS;
+}
+
+/* NEW METHODS TO SUPPORT Fair Lock Scheduler*/
+void set_fib_colour(fiber_t* f, int index, void* lock) {
+  // This means if this is 0 then lock has been previously recorded
+     f->bitcolour |= (1 << index);
+ }
+
+LinkedList* get_locks(fiber_t* f) { return f->locks; } // locks is an array of pointers void*
+
+void remove_fiber_from_locks(fiber_t* f){
+  if (f->locks) {
+    Node *current = f->locks->head;
+    while (current) {
+        Node *temp = current;
+        current = current->next;
+        sched_lock_t* lock = (sched_lock_t*)temp->value;
+        atomic_fetch_sub_explicit(&lock->num_holders, 1, memory_order_relaxed);
+    }
+}
+// llist_free(f->locks);
+}
+
+// This is needed to find the index each lock corresponds to in the colours vector
+int get_lock_index(void* lock) {
+  int index;
+  fiber_spinlock_lock(&lock_index);
+  // pthread_spin_lock(&shared_ds_lock);
+  if (!hashmap_get(locks_to_indices, lock, &index)) {
+    index = current_lock_index++;
+    hashmap_put(locks_to_indices, lock, index);
+  }
+  fiber_spinlock_unlock(&lock_index);
+  return index;
+}
+
+// Set Data in the Shared Hashmap holding lock-fiber statistics for each fiber and lock pair 
+void set_lock_fiber_data(void* lock, struct timeval ban_time, struct timeval time_slice, fiber_t* fiber) {
+  fiber_manager_t* manager = fiber_manager_get();
+  if (fiber == NULL){
+    fiber = manager->current_fiber;
+  }
+  lock_stats_t temp_stats = {ban_time, time_slice};
+  insert(lock_fiber_d, (void*)fiber, lock, temp_stats);
+}
+
+
+// Get Data in the Shared Hashmap holding lock-fiber statistics for each fiber and lock pair 
+lock_stats_t* get_lock_fiber_data(void* lock, lock_stats_t* lock_stat, fiber_t* f) {
+  if (f == NULL){
+    f = fiber_manager_get()->current_fiber;
+  }
+  if (get(lock_fiber_d, (void*)f, lock, lock_stat)) {
+      return lock_stat;
+  }
+  return NULL; 
+}
+
+// Assign colours to threads (Auto-Colouring)
+// Add and associate it with exsiting fibers 
+void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
+  if (f == NULL){
+    f = fiber_manager_get()->current_fiber;
+  }
+  sched_lock_t* s_lock = (sched_lock_t*) lock;
+  int lock_index = get_lock_index(lock);
+  if (((f->bitcolour) & (1 << lock_index)) == 0) {  // This means if this is 1 then lock has been previously recorded
+    printf("Recording a lock  of index %d\n", lock_index);
+    set_fib_colour(f, lock_index, lock);
+    add_locks(f, lock); // add locks 
+    set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, NULL);
+    atomic_fetch_add_explicit(&s_lock->num_holders, 1, memory_order_relaxed); // update lock data 
+    fiber_yield();
+    // we yield after setting the fiber colour for the first time for a lock
+  }
+}
+
+void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks being used by the fiber 
+  
+  llist_insert(f->locks, lock);
+}
+
+void remove_locks(fiber_t* f, void* lock){
+
+  llist_delete(f->locks, lock);
 }
