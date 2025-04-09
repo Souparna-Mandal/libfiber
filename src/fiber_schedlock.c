@@ -70,24 +70,25 @@ void ban_fibers(struct sched_lock *lock , fiber_t* fiber){
     struct timeval banned_until;
     unsigned long long cs_length;
     int nthreads = atomic_load(&lock->num_holders);
-    if ((nthreads > 1) && (lock->start_ticks.tv_sec > 0)) { // don't ban in the start 
-        /* Expand ban tvime by (cs_length * num_threads). */
-        cs_length = time_difference(&lock->start_ticks, &lock->end_ticks);
-        time_adder.tv_sec  = (cs_length * (nthreads - 1 )) / 1000000ULL ;
-        time_adder.tv_usec = (cs_length * (nthreads - 1 )) % 1000000ULL ;
-        // printf("Fiber %p is banned for %lld u-secs \nstart_ticks %ld s and %ld usecs \nend_ticks %ld s and %ld u-secs\n", (void *)fiber, cs_length,
-        // lock->start_ticks.tv_sec,
-        // lock->start_ticks.tv_usec,
-        // lock->end_ticks.tv_sec,
-        // lock->end_ticks.tv_usec
-        // );
+    if (lock->holder != fiber){
+      return;
+    } else if ((nthreads > 1) && (lock->start_ticks.tv_sec > 0) &&
+               (lock->end_ticks.tv_sec > 0)) {  // don't ban in the start
+      /* Expand ban tvime by (cs_length * num_threads). */
+      cs_length = time_difference(&lock->start_ticks, &lock->end_ticks);
+      time_adder.tv_sec = (cs_length * (nthreads - 1)) / 1000000ULL;
+      time_adder.tv_usec = (cs_length * (nthreads - 1)) % 1000000ULL;
+    //   printf("Fiber %p is banned for %lld u-secs \n start_ticks %ld s and %ld usecs \n" 
+    //     "end_ticks %ld s and %ld u-secs \n",
+    //     fiber, cs_length, lock->start_ticks.tv_sec, lock->start_ticks.tv_usec, lock->end_ticks.tv_sec, lock->end_ticks.tv_usec);
+ 
 
-
-        timeval_add(&banned_until, &lock->end_ticks, &time_adder);
-        set_lock_fiber_data((void*)lock, banned_until, (struct timeval){0,SLICE_SIZE_US}, fiber);
-        }
-     else {
-        /* If only one fiber, no ban needed. */
-        set_lock_fiber_data((void*)lock, lock->end_ticks, (struct timeval){0,SLICE_SIZE_US}, fiber);
+      timeval_add(&banned_until, &lock->end_ticks, &time_adder);
+      set_lock_fiber_data((void *)lock, banned_until,
+                          (struct timeval){0, SLICE_SIZE_US}, fiber);
+    } else {
+      /* If only one fiber, no ban needed. */
+      set_lock_fiber_data((void *)lock, lock->end_ticks,
+                          (struct timeval){0, SLICE_SIZE_US}, fiber);
     }
 }

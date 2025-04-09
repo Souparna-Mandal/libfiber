@@ -322,7 +322,7 @@ void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
   sched_lock_t* s_lock = (sched_lock_t*) lock;
   int lock_index = get_lock_index(lock);
   if (((f->bitcolour) & (1 << lock_index)) == 0) {  // This means if this is 1 then lock has been previously recorded
-    printf("Recording a lock  of index %d\n", lock_index);
+    // printf("Recording a lock  of index %d\n", lock_index);
     set_fib_colour(f, lock_index, lock);
     add_locks(f, lock); // add locks 
     set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, NULL);
@@ -353,8 +353,6 @@ void fiber_yield_lock_processing(fiber_t* fiber){
       current = current->next;
       continue;
     }
-    lock->slice_acquired = 0;
-    lock->holder = NULL;
     ban_fibers(lock, fiber);
 
     /*Reset Stats*/
@@ -362,6 +360,8 @@ void fiber_yield_lock_processing(fiber_t* fiber){
     lock->end_ticks = (struct timeval){0, 0};
     lock->slice_end_time = (struct timeval){0, 0};
 
+    lock->holder = NULL;
+    lock->slice_acquired = 0;
     lock->lock_held = 0;
 
     current = current->next;
