@@ -25,7 +25,7 @@ struct fiber_manager;
 #define FIBER_DETACH_WAIT_FOR_JOINER (1)
 #define FIBER_DETACH_WAIT_TO_JOIN (2)
 #define FIBER_DETACH_DETACHED (3)
-#define MAX_FIBS (1000)
+#define MAX_FIBS (1024)
 #define MAX_LOCKS (64)
 
 typedef struct fiber {
@@ -48,6 +48,11 @@ typedef struct fiber {
                            // mechanisms do not conflict! (ie. only use scratch
                            // while a fiber is sleeping/waiting)
 } fiber_t;
+
+#ifdef DEBUG
+typedef unsigned long long ull;
+extern ull fiber_run_time;
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,6 +88,7 @@ void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f);
 void add_locks(fiber_t* f, void* lock);
 void remove_locks(fiber_t* f, void* lock);
 LinkedList* get_locks(fiber_t* f);
+void fiber_yield_lock_processing(fiber_t* fiber);
 
 #ifdef __cplusplus
 }

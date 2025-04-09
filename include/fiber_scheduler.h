@@ -29,6 +29,12 @@ extern int current_lock_index;
 
 int fiber_scheduler_init(size_t num_threads);
 
+int try_update_colour(uint64_t fiber_colour);
+
+int try_update_colour_lock(uint64_t fiber_colour);
+
+void reset_colour_scheduling_fiber_lock(uint64_t fiber_colour);
+
 int fiber_colour_scheduling_check(uint64_t fiber_colour);
 
 int is_fiber_runable(fiber_t* fiber);

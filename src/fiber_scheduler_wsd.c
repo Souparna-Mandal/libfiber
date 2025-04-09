@@ -97,24 +97,37 @@ void fiber_scheduler_schedule(fiber_scheduler_t* scheduler,
       ((fiber_scheduler_wsd_t*)scheduler)->schedule_from, the_fiber);
 }
 
-int fiber_colour_scheduling_check(uint64_t fiber_colour){ // returns 1 if runsable else 0 
-	uint64_t check = colours & fiber_colour;
-	if ( check == 0){
-		return 1;
-	}
-	else 
-		return 0;
+int try_update_colour_lock(uint64_t fiber_colour) {
+  int result = 0;
+  pthread_spin_lock(&scheduler_spinlock);
+  if ((colours & fiber_colour) == 0) {
+      colours |= fiber_colour;
+      result = 1;
+  }
+  pthread_spin_unlock(&scheduler_spinlock);
+  return result;
 }
 
-void update_color_scheduling(uint64_t fiber_colour){
-	//printf("Before color update: fiber color %ld, Color_array %ld\n", fiber_color, color_array);
-	pthread_spin_lock(&scheduler_spinlock);
-	colours = colours | fiber_colour;
-	pthread_spin_unlock(&scheduler_spinlock);
-	//printf("After color update: fiber color %ld, Color_array %ld\n", fiber_color, color_array);
+int try_update_colour(uint64_t fiber_colour) {
+  int result = 0;
+  // pthread_spin_lock(&scheduler_spinlock);
+  if ((colours & fiber_colour) == 0) {
+      colours |= fiber_colour;
+      result = 1;
+  }
+  // pthread_spin_unlock(&scheduler_spinlock);
+  return result;
 }
 
 void reset_colour_scheduling_fiber(uint64_t fiber_colour){
+	//printf("Before color reset: fiber color %ld, Color_array %ld\n", fiber_color, color_array);
+    // pthread_spin_lock(&scheduler_spinlock);    
+    colours = colours & ~(fiber_colour);
+    // pthread_spin_unlock(&scheduler_spinlock);
+	//printf("After color reset: fiber color %ld, Color_array %ld\n", fiber_color, color_array);
+}
+
+void reset_colour_scheduling_fiber_lock(uint64_t fiber_colour){
 	//printf("Before color reset: fiber color %ld, Color_array %ld\n", fiber_color, color_array);
     pthread_spin_lock(&scheduler_spinlock);    
     colours = colours & ~(fiber_colour);
@@ -131,9 +144,9 @@ int is_fiber_runable(fiber_t* fiber){
     pthread_spin_unlock(&scheduler_spinlock);
     return 1;
   }
-
-  if (fiber_colour_scheduling_check(fib_colour) == 0) { 
-    try_free_expired_slices(locks);
+  // if (fiber_colour_scheduling_check(fib_colour) == 0) { 
+  if (!try_update_colour(fib_colour)) { 
+    // try_free_expired_slices(locks);
     pthread_spin_unlock(&scheduler_spinlock);
     return 0;  // Not runsable 
   }
@@ -145,6 +158,7 @@ int is_fiber_runable(fiber_t* fiber){
   while (current != NULL) {
     if (get(lock_fiber_d, (void*)fiber, current->value, &lock_stat)) {
       if (timercmp(&now, &lock_stat.banned_until, <)) { // The Fiber is Banned from Using at least one Lock
+        reset_colour_scheduling_fiber(fib_colour);
         pthread_spin_unlock(&scheduler_spinlock);
         return 0;
       }
@@ -161,7 +175,7 @@ void try_free_expired_slices(LinkedList* locks) {
   gettimeofday(&now, NULL);
 
   Node* current = locks->head;
-  while (current != NULL) {
+  while ((current!= NULL) && (current->value != NULL)) {
       // Assume each lock pointer is a pointer to a sched_lock_t structure.
       sched_lock_t* sched_lock = (sched_lock_t*)current->value;
 
@@ -170,7 +184,7 @@ void try_free_expired_slices(LinkedList* locks) {
         current = current->next;
         continue; // Can do optimisation where we only go through conflicting colours #TODO
       }
-      if ((timercmp(&now, &sched_lock->slice_end_time, >)) && (&sched_lock->lock_held == 0)){ // This lock_held check prevents us from premting the lock in the critical section
+      if ((timercmp(&now, &sched_lock->slice_end_time, >)) && (sched_lock->lock_held == 0)){ // This lock_held check prevents us from premting the lock in the critical section
           // Mark the slice as expired.
           sched_lock->slice_acquired = 0;
           sched_lock->holder = NULL;
@@ -193,10 +207,6 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, fiber_t * current_fiber)
     scheduler->store_to = temp;
   }
 
-  if (current_fiber){
-    reset_colour_scheduling_fiber(current_fiber->bitcolour);
-  }
-
   while (wsd_work_stealing_deque_size(scheduler->schedule_from) > 0) {
     fiber_t* const new_fiber =
         (fiber_t*)wsd_work_stealing_deque_pop_bottom(scheduler->schedule_from);
@@ -208,8 +218,12 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, fiber_t * current_fiber)
         wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber);
       }
       
+      // else if (!try_update_colour(new_fiber->bitcolour)){
+      //   wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber);
+      // }
+
       else {
-        update_color_scheduling(new_fiber->bitcolour);
+        // update_color_scheduling(new_fiber->bitcolour);
         return new_fiber;
       }
     }

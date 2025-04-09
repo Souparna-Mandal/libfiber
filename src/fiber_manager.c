@@ -21,6 +21,12 @@
 
 #include "lockfree_ring_buffer.h"
 
+#ifdef DEBUG
+// ull fiber_run_time;
+struct timeval start_time;
+struct timeval end_time;
+#endif
+
 #ifdef FIBER_STACK_SPLIT
 void __splitstack_block_signals(int* new, int* old);
 
@@ -66,6 +72,12 @@ fiber_manager_t* fiber_manager_create(fiber_scheduler_t* scheduler) {
   manager->current_fiber = manager->thread_fiber;
   manager->scheduler = scheduler;
 
+  #ifdef DEBUG
+  manager->start_time_d =  (struct timeval) {0,0};
+  manager->end_time_d = (struct timeval) {0,0};
+  manager->end_time_set = 0; 
+  #endif
+
   if (!manager->thread_fiber) {
     fiber_destroy(manager->thread_fiber);
     free(manager);
@@ -101,10 +113,13 @@ void fiber_manager_yield(fiber_manager_t* manager) {
   assert(manager);
 
   fiber_t* const current_fiber = manager->current_fiber;
-  if (current_fiber){
-    reset_colour_scheduling_fiber(current_fiber->bitcolour); //reset colour
+  // printf("Current colour is %ld and fiber colour is %ld \n", colours,
+  //         current_fiber->bitcolour);
+  if (current_fiber) {
+    reset_colour_scheduling_fiber_lock(current_fiber->bitcolour); //reset colour
+    // fiber_do_real_sleep(0, 1);
   }
-  
+
   while (1) {
     manager->yield_count += 1;
     const fiber_state_t state = current_fiber->state;
@@ -113,8 +128,10 @@ void fiber_manager_yield(fiber_manager_t* manager) {
     if (new_fiber) {
       fiber_manager_switch_to(manager, current_fiber, new_fiber);
       break;
-    } else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
+    } 
+    else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
                FIBER_STATE_SAVING_STATE_TO_WAIT == state) {
+    // else if (FIBER_STATE_DONE == state) {
       if (!manager->maintenance_fiber) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
@@ -129,7 +146,9 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       if ((manager->yield_count & 1023) == 0) {
         fiber_scheduler_load_balance(manager->scheduler);
       }
-      if (is_fiber_runable(current_fiber)){ // retursn 1 for runable and 0 for now 
+
+      if (is_fiber_runable(current_fiber)){ // retursn 1 for runable and 0 for now
+        // update_color_scheduling(current_fiber->bitcolour);
         break;
       }
     }
@@ -203,7 +222,7 @@ static void* fiber_manager_thread_func(void* param) {
 int fiber_manager_init(size_t num_threads) {
   splitstack_disable_block_signals();
   fiber_shutting_down = 0;
-  should_check_events = false;
+  should_check_events = true;
   this_thread = pthread_self();
 
   if (fiber_manager_get_state() != FIBER_MANAGER_STATE_NONE) {
@@ -282,6 +301,11 @@ void fiber_shutdown() {
   // Note: 'this_thread' is used instead of simply calling pthread_self()
   // because gcc will hoist the call to pthread_self() out of the loop and we'll
   // never terminate.
+
+  #ifdef DEBUG
+  printf("The total runtime of fibers is %lld \n", fiber_run_time);
+#endif
+
   while (!pthread_equal(this_thread, fiber_manager_threads[0])) {
     should_check_events = false;
     fiber_yield();

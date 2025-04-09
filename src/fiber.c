@@ -12,18 +12,23 @@
 #include <stdint.h>
 #include "fiber_scheduler.h"
 #include "fiber_schedlock.h"
+#include "timing.h"
 
 static uint fiber_global_id = 0;
 hashmap_t* locks_to_indices;
 hashmap2d* lock_fiber_d;
 int current_lock_index;
 
+#ifdef DEBUG
+ull fiber_run_time = 0;
+#endif
+
 #include "fiber_manager.h"
 #include "mpmc_lifo.h"
 
 void fiber_mark_completed(fiber_t* the_fiber, void* result) {
   atomic_store_explicit(&the_fiber->result, result, memory_order_release);
-  reset_colour_scheduling_fiber(the_fiber->bitcolour); // reset colour 
+  reset_colour_scheduling_fiber_lock(the_fiber->bitcolour); // reset colour 
 
   if (the_fiber->detach_state != FIBER_DETACH_DETACHED) {
     const int old_state =
@@ -213,7 +218,22 @@ int fiber_tryjoin(fiber_t* f, void** result) {
 }
 
 int fiber_yield() {
-  fiber_manager_yield(fiber_manager_get());
+  fiber_manager_t* m = fiber_manager_get();
+#ifdef DEBUG
+  gettimeofday(&m->end_time_d, NULL);
+  if (m->end_time_set== 1){
+    fiber_run_time +=
+        time_difference(&m->start_time_d, &m->end_time_d);
+  }
+
+#endif
+  fiber_yield_lock_processing(m->current_fiber);
+  fiber_manager_yield(m);
+#ifdef DEBUG
+  gettimeofday(&m->start_time_d, NULL);
+  if (m->end_time_set== 0) { m->end_time_set = 1; }
+
+#endif
   return 1;
 }
 
@@ -320,4 +340,30 @@ void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks bein
 void remove_locks(fiber_t* f, void* lock){
 
   llist_delete(f->locks, lock);
+}
+
+void fiber_yield_lock_processing(fiber_t* fiber){
+  Node* current = fiber->locks->head;
+  sched_lock_t* lock;
+  while (current) {
+    if (current->value) {
+      lock = (sched_lock_t*)current->value;
+    } else {
+      printf("ERROR no lock.... skipping");
+      current = current->next;
+      continue;
+    }
+    lock->slice_acquired = 0;
+    lock->holder = NULL;
+    ban_fibers(lock, fiber);
+
+    /*Reset Stats*/
+    lock->start_ticks = (struct timeval){0, 0};
+    lock->end_ticks = (struct timeval){0, 0};
+    lock->slice_end_time = (struct timeval){0, 0};
+
+    lock->lock_held = 0;
+
+    current = current->next;
+  }
 }

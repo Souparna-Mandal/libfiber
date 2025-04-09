@@ -36,16 +36,16 @@ void sched_lock_acquire(struct sched_lock *lock)
         lock->slice_acquired = 1;
         lock->holder = fiber_manager_get()->current_fiber;
     }
-    else{
-        gettimeofday(&lock->end_ticks, NULL); // we use the last possible end-ticks 
-        if (timercmp(&lock->end_ticks, &lock->slice_end_time,>)){ // enter if slice has expired
-            lock->holder = NULL;
-            ban_fibers(lock, NULL);
-            lock->lock_held = 0;
-            lock->slice_acquired = 0;
-            fiber_yield(); // Yield to Allow Others to get resources
-        }
-    }
+    // else{
+    //     gettimeofday(&lock->end_ticks, NULL); // we use the last possible end-ticks 
+    //     if (timercmp(&lock->end_ticks, &lock->slice_end_time,>)){ // enter if slice has expired
+    //         // lock->holder = NULL;
+    //         // ban_fibers(lock, NULL);
+    //         // lock->lock_held = 0;
+    //         // lock->slice_acquired = 0;
+    //         fiber_yield(); // Yield to Allow Others to get resources
+    //     }
+    // }
     lock->lock_held = 1;
 }
 
@@ -54,9 +54,10 @@ void sched_lock_release(struct sched_lock *lock)
 
     gettimeofday(&lock->end_ticks, NULL); // we use the last possible end-ticks 
     if (timercmp(&lock->end_ticks, &lock->slice_end_time,>)){ // enter if slice has expired
-        lock->slice_acquired = 0;
-        lock->holder = NULL;
-        ban_fibers(lock, NULL);
+        // lock->slice_acquired = 0;
+        // lock->holder = NULL;
+        // ban_fibers(lock, NULL);
+        // lock->lock_held = 0;
         fiber_yield(); // Yield to Allow Others to get resources
         return;
     }
@@ -69,11 +70,18 @@ void ban_fibers(struct sched_lock *lock , fiber_t* fiber){
     struct timeval banned_until;
     unsigned long long cs_length;
     int nthreads = atomic_load(&lock->num_holders);
-    if (nthreads > 1) {
+    if ((nthreads > 1) && (lock->start_ticks.tv_sec > 0)) { // don't ban in the start 
         /* Expand ban tvime by (cs_length * num_threads). */
         cs_length = time_difference(&lock->start_ticks, &lock->end_ticks);
         time_adder.tv_sec  = (cs_length * (nthreads - 1 )) / 1000000ULL ;
         time_adder.tv_usec = (cs_length * (nthreads - 1 )) % 1000000ULL ;
+        // printf("Fiber %p is banned for %lld u-secs \nstart_ticks %ld s and %ld usecs \nend_ticks %ld s and %ld u-secs\n", (void *)fiber, cs_length,
+        // lock->start_ticks.tv_sec,
+        // lock->start_ticks.tv_usec,
+        // lock->end_ticks.tv_sec,
+        // lock->end_ticks.tv_usec
+        // );
+
 
         timeval_add(&banned_until, &lock->end_ticks, &time_adder);
         set_lock_fiber_data((void*)lock, banned_until, (struct timeval){0,SLICE_SIZE_US}, fiber);

@@ -6,18 +6,13 @@
 #include <string.h> // if needed
 
 // 1) Implement a simpler hash2d
-unsigned int hash2d(void *fiber, void *lock, int table_size) {
-    // Cast both pointers to an integer type
-    uintptr_t f = (uintptr_t) fiber;
-    uintptr_t l = (uintptr_t) lock;
+// inline unsigned int hash2d(void *fiber, void *lock, int table_size) {
+//     uintptr_t f = (uintptr_t)fiber;
+//     uintptr_t l = (uintptr_t)lock;
+//     uintptr_t combined = f ^ (l << 1);
+//     return (unsigned int)(combined & (table_size - 1));
+// }
 
-    // Simple approach: shift one pointer and XOR
-    // This combines the two pointers into a single hash value
-    uintptr_t combined = f ^ (l << 1);
-
-    // Finally, take modulo with table_size
-    return (unsigned int)(combined % table_size);
-}
 
 // 2) Implement create_hashmap2d
 hashmap2d *create_hashmap2d(int table_size) {

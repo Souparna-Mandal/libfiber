@@ -163,6 +163,9 @@ TESTBINARIES = $(patsubst %,bin/%,$(TESTS))
 INCLUDES = $(wildcard include/*.h)
 TESTINCLUDES = $(wildcard test/*.h)
 
+
+CFLAGS += -DDEBUG -g 
+
 libfiber.so: $(PICOBJS)
 	$(CC) $(LINKER_SHARED_FLAG) $(LDFLAGS) $(CFLAGS) $^ -o $@ $(LDFLAGSAFTER)
 
