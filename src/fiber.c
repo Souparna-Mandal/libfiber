@@ -292,12 +292,12 @@ int get_lock_index(void* lock) {
 }
 
 // Set Data in the Shared Hashmap holding lock-fiber statistics for each fiber and lock pair 
-void set_lock_fiber_data(void* lock, struct timeval ban_time, struct timeval time_slice, fiber_t* fiber) {
+void set_lock_fiber_data(void* lock, struct timeval ban_time, struct timeval time_slice, struct timeval start_ticks, struct timeval end_ticks, fiber_t* fiber) {
   fiber_manager_t* manager = fiber_manager_get();
   if (fiber == NULL){
     fiber = manager->current_fiber;
   }
-  lock_stats_t temp_stats = {ban_time, time_slice};
+  lock_stats_t temp_stats = {ban_time, time_slice, start_ticks, end_ticks};
   insert(lock_fiber_d, (void*)fiber, lock, temp_stats);
 }
 
@@ -325,7 +325,7 @@ void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
     // printf("Recording a lock  of index %d\n", lock_index);
     set_fib_colour(f, lock_index, lock);
     add_locks(f, lock); // add locks 
-    set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, NULL);
+    set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, (struct timeval){0,0} ,(struct timeval){0,0} ,NULL);
     atomic_fetch_add_explicit(&s_lock->num_holders, 1, memory_order_relaxed); // update lock data 
     fiber_yield();
     // we yield after setting the fiber colour for the first time for a lock
@@ -356,8 +356,8 @@ void fiber_yield_lock_processing(fiber_t* fiber){
     ban_fibers(lock, fiber);
 
     /*Reset Stats*/
-    lock->start_ticks = (struct timeval){0, 0};
-    lock->end_ticks = (struct timeval){0, 0};
+    lock->lock_stat->start_ticks = (struct timeval){0, 0};
+    lock->lock_stat->end_ticks = (struct timeval){0, 0};
     lock->slice_end_time = (struct timeval){0, 0};
 
     lock->holder = NULL;

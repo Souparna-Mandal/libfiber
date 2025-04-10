@@ -81,7 +81,11 @@ void set_fib_colour(fiber_t* f, int index, void* lock);
 void remove_fiber_from_locks(fiber_t* f);
 int get_lock_index(void* lock);
 void set_lock_fiber_data(void* lock, struct timeval ban_time,
-                         struct timeval time_slice, fiber_t* fiber);
+   struct timeval time_slice, 
+   struct timeval start_ticks, 
+   struct timeval end_ticks, 
+   fiber_t* fiber);
+   
 lock_stats_t* get_lock_fiber_data(void* lock, lock_stats_t* lock_stat,
                                   fiber_t* f);
 void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f);
