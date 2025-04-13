@@ -12,15 +12,19 @@ extern "C" {
 
 typedef void* fiber_scheduler_t;
 
+int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running); // check the colour, and if any of the
+
+void try_free_expired_slices(int num_locks, void** locks, colours_t* running) ;
+
 int fiber_scheduler_init(size_t num_threads);
 
 void fiber_scheduler_shutdown();
 
 fiber_scheduler_t* fiber_scheduler_for_thread(size_t thread_id);
 
-void fiber_scheduler_schedule(fiber_scheduler_t* scheduler, fiber_t* the_fiber);
+void fiber_scheduler_schedule(fiber_scheduler_t* scheduler, fiber_t* the_fiber); // add it to thr queue to schedule 
 
-fiber_t* fiber_scheduler_next(fiber_scheduler_t* scheduler);
+fiber_t* fiber_scheduler_next(fiber_scheduler_t* scheduler, hashmap2d* lock_fiber_d, colours_t* running);
 
 void fiber_scheduler_load_balance(fiber_scheduler_t* scheduler);
 

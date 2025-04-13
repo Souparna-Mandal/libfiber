@@ -6,6 +6,7 @@
 
 #include "fiber_scheduler.h"
 #include "work_stealing_deque.h"
+#include "fiber_schedlock.h"
 
 typedef struct fiber_scheduler_wsd {
   wsd_work_stealing_deque_t* queue_one;
@@ -86,32 +87,52 @@ fiber_scheduler_t* fiber_scheduler_for_thread(size_t thread_id) {
 
 void fiber_scheduler_schedule(fiber_scheduler_t* scheduler,
                               fiber_t* the_fiber) {
+  // We push to thr bottom og the Dequeue to Schedule something 
   assert(scheduler);
   assert(the_fiber);
   wsd_work_stealing_deque_push_bottom(
-      ((fiber_scheduler_wsd_t*)scheduler)->schedule_from, the_fiber);
+      ((fiber_scheduler_wsd_t*)scheduler)->schedule_from, the_fiber); 
 }
 
-fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched) {
+fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, hashmap2d* lock_fiber_d, colours_t *running) {
   fiber_scheduler_wsd_t* const scheduler = (fiber_scheduler_wsd_t*)sched;
   assert(scheduler);
-  if (wsd_work_stealing_deque_size(scheduler->schedule_from) == 0) {
+
+  int size = wsd_work_stealing_deque_size(scheduler->schedule_from);
+  if (size == 0) {
     wsd_work_stealing_deque_t* const temp = scheduler->schedule_from;
     scheduler->schedule_from = scheduler->store_to;
     scheduler->store_to = temp;
   }
 
-  while (wsd_work_stealing_deque_size(scheduler->schedule_from) > 0) {
-    fiber_t* const new_fiber =
-        (fiber_t*)wsd_work_stealing_deque_pop_bottom(scheduler->schedule_from);
-    if (new_fiber != WSD_EMPTY && new_fiber != WSD_ABORT) {
-      if (new_fiber->state == FIBER_STATE_SAVING_STATE_TO_WAIT) {
-        wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber);
-      } else {
-        return new_fiber;
+  int i = 0;
+  while ((size > 0) && (i < size)) {
+    // fiber_t* const new_fiber =
+    //     (fiber_t*)wsd_work_stealing_deque_pop_bottom(scheduler->schedule_from);
+    fiber_t* new_fiber;
+    if ((new_fiber = wsd_work_stealing_deque_peek_bottom(scheduler->schedule_from, i)) == NULL ){
+      break; // End of dequeue
+    }
+    if (is_fiber_runable(new_fiber, lock_fiber_d, running)) {
+      wsd_work_stealing_deque_pop_at(scheduler->schedule_from, i);
+      if (new_fiber != WSD_EMPTY && new_fiber != WSD_ABORT) {
+        if (new_fiber->state == FIBER_STATE_SAVING_STATE_TO_WAIT) {
+          wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber); 
+        } 
+        else {
+            // Set the Colour of the fiber we will be sheduling 
+          // pthread_spin_lock(&scheduler_spinlock); 
+          *running = *running | (new_fiber->bitcolour); 
+          // pthread_spin_unlock(&scheduler_spinlock);
+          return new_fiber;
+        }
       }
     }
+    i += 1; // increment index for checking
+    size = wsd_work_stealing_deque_size(scheduler->schedule_from);
   }
+  // printf("NOT SCHEDULING \n");
+  
   return NULL;
 }
 
@@ -154,4 +175,74 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
   assert(scheduler);
   *steal_count += scheduler->steal_count;
   *failed_steal_count += scheduler->failed_steal_count;
+}
+
+/* New Function for Libcolour + SCL Implementation*/
+void try_free_expired_slices(int num_locks, void** locks, colours_t* running) {
+  fiber_t* holder;
+  struct timeval now;
+  gettimeofday(&now, NULL);
+
+
+  for (int i = 0; i < num_locks; i++) {
+      // Assume each lock pointer is a pointer to a sched_lock_t structure.
+      sched_lock_t* sched_lock = (sched_lock_t*)locks[i];
+
+      // If the slice is not set, there is nothing to free.
+      holder = sched_lock->holder; // should hold the fiber that is holding the lock
+      if (holder == NULL){
+        continue;
+      }
+      // If the current time is later than the slice end time, the slice has expired.
+      if (timercmp(&now, &sched_lock->slice_end_time, >)) {
+          // Mark the slice as expired.
+          sched_lock->slice_set = 0;
+
+          // Clear the corresponding bit in the fiber's colour.
+          // We use get_lock_index to determine which bit corresponds to this lock.
+          int lock_index = get_lock_index((void*)sched_lock);
+          //   TODO COMMENT THIS OUT IF BUGGY
+
+          *running = ~(1 << lock_index); //reset and release slice
+          holder->bitcolour &= ~(1 << lock_index); // reset the lock usage, assume lock is unwanted 
+
+          ban_fibers((void*)sched_lock, holder);
+          sched_lock->holder = NULL;
+      }
+  }
+}
+
+int is_fiber_runable(fiber_t* fiber, hashmap2d* lock_fiber_d, colours_t* running){
+  lock_stats_t lock_stat;
+  colours_t fib_colour = get_colour(fiber);
+  int num_locks = get_num_locks(fiber) + 1; // gives -1 for no locks, and the highest index
+  void** locks = get_locks(fiber);
+  // pthread_spin_lock(&scheduler_spinlock);
+  if (fib_colour & (*running)) {  // if it is 0 then its runable
+    //  pthread_spin_unlock(&scheduler_spinlock);
+    try_free_expired_slices(num_locks, locks, running);
+    return 0;  // Not runable
+  }
+  // printf("lock address %p\n", locks[0]);
+  // get the current time in microseconds + seconds as a timeval struct
+  struct timeval now;
+  gettimeofday(&now, NULL);
+
+  if (num_locks == 0){ //No locks registered then allow to run
+    // printf(" No locks registered Yet \n");
+    // pthread_spin_unlock(&scheduler_spinlock);
+    return 1;
+  }
+  for (int i = 0; i < num_locks; i++) {
+    if (get(lock_fiber_d, (void*)fiber, locks[i], &lock_stat)){
+      // printf("The  ban time is Seconds: %ld, Microseconds: %ld\n", (long)&lock_stat->banned_until.tv_sec, (long)&lock_stat->banned_until.tv_usec);
+      if (timercmp(&now, &lock_stat.banned_until, <)) { // The Fiber is Banned from Using at least one Lock
+        //printf("Fiber is Banned \n");
+        // pthread_spin_unlock(&scheduler_spinlock);
+        return 0;
+      }
+    }
+  }
+  // pthread_spin_unlock(&scheduler_spinlock);
+  return 1;
 }

@@ -8,13 +8,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdatomic.h>
+
 
 #include "fiber_manager.h"
 #include "mpmc_lifo.h"
 
+atomic_int total_fiber_count = 0;
+
 void fiber_mark_completed(fiber_t* the_fiber, void* result) {
   atomic_store_explicit(&the_fiber->result, result, memory_order_release);
-
+  
+  // we need to unset colours for sure 
   if (the_fiber->detach_state != FIBER_DETACH_DETACHED) {
     const int old_state =
         atomic_exchange(&the_fiber->detach_state, FIBER_DETACH_WAIT_FOR_JOINER);
@@ -54,6 +59,8 @@ fiber_go_function(void* param) {
   fiber_manager_do_maintenance();
 
   void* const result = the_fiber->run_function(the_fiber->param);
+  unset_colour();
+  printf("Fiber is complete \n");
 
   fiber_join_routine(the_fiber, result);
 
@@ -73,13 +80,11 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
     errno = ENOMEM;
     return NULL;
   }
-  ret->fiber_stats = calloc(1, sizeof(*ret->fiber_stats));
-  (ret->fiber_stats)->banned_until.tv_sec  = 0;
-  (ret->fiber_stats)->banned_until.tv_usec = 0;
-  
-  (ret->fiber_stats)->slice_size.tv_sec  = 0;
-  (ret->fiber_stats)->slice_size.tv_usec = 2;   // 2us is the slice Size
-
+  for (int i = 0; i < MAX_LOCKS; i++) {
+    ret->locks[i] = NULL;
+  }
+  ret->bitcolour = 0;
+  ret->num_locks = -1;
   ret->run_function = run_function;
   ret->param = param;
   ret->state = FIBER_STATE_READY;
@@ -87,6 +92,7 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id += 1;
+  ret->kill_colour = 0;
   if (FIBER_SUCCESS !=
       fiber_context_init(&ret->context, stack_size, &fiber_go_function, ret)) {
     free(ret);
@@ -98,6 +104,7 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
 
 fiber_t* fiber_create(size_t stack_size, fiber_run_function_t run_function,
                       void* param) {
+  atomic_fetch_add_explicit(&total_fiber_count, 1, memory_order_relaxed);
   fiber_t* const ret = fiber_create_no_sched(stack_size, run_function, param);
   if (ret) {
     fiber_manager_schedule(fiber_manager_get(), ret);
@@ -118,17 +125,17 @@ fiber_t* fiber_create_from_thread() {
     return NULL;
   }
   
-  ret->fiber_stats = calloc(1, sizeof(*ret->fiber_stats));
-  ret->fiber_stats->banned_until.tv_sec  = 0;
-  ret->fiber_stats->banned_until.tv_usec = 0;
-  ret->fiber_stats->slice_size.tv_sec    = 0;
-  ret->fiber_stats->slice_size.tv_usec   = 2;   // 2us is the slice Size
-
+  for (int i = 0; i < MAX_LOCKS; i++) {
+    ret->locks[i] = NULL;
+  }
+  ret->bitcolour = 0;
+  ret->num_locks = -1;
   ret->state = FIBER_STATE_RUNNING;
   ret->detach_state = FIBER_DETACH_NONE;
   ret->join_info = NULL;
   ret->result = NULL;
   ret->id = 1;
+  ret->kill_colour = 0;
   if (FIBER_SUCCESS != fiber_context_init_from_thread(&ret->context)) {
     free(ret);
     return NULL;
@@ -233,16 +240,23 @@ int fiber_detach(fiber_t* f) {
   return FIBER_SUCCESS;
 }
 
-  /* Lock Stats for Scheduler-v2 */
-  
-  lock_stats_t* get_lock_stats(fiber_t* fiber){
-    return fiber -> fiber_stats;
-  }
-  void set_lock_stats(fiber_t* fiber, struct timeval* banned_until, struct timeval* slice_size){
-    if (banned_until != NULL)
-    {
-      (fiber->fiber_stats)->banned_until = *banned_until;}
-    if (slice_size != NULL){
-      (fiber->fiber_stats)->slice_size = *slice_size;}
-  }
+colours_t get_colour(fiber_t* f) { return f->bitcolour; }
 
+void set_colour(fiber_t* f, int index, void* lock) {
+ // This means if this is 0 then lock has been previously recorded
+    f->bitcolour |= (1 << index);
+    add_locks(f, lock);
+}
+
+void** get_locks(fiber_t* f) { return f->locks; } // locks is an array of pointers void*
+int get_num_locks(fiber_t* f){ return f->num_locks; }
+
+void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks being used by the fiber 
+  
+  f->num_locks += 1;
+  f->locks[f->num_locks] = lock; 
+}
+
+int get_fiber_count() {
+  return atomic_load_explicit(&total_fiber_count, memory_order_relaxed);
+}

@@ -20,7 +20,10 @@ CFILES = \
     work_stealing_deque.c \
     work_queue.c \
     fiber_scheduler_wsd.c \
-    schedule_lock.c \
+    hashmap.c \
+    hashmap_1_d.c \
+    timing.c \
+    fiber_schedlock.c \
 
 USE_NATIVE_EVENTS ?= 1
 ifeq ($(USE_NATIVE_EVENTS),1)
@@ -54,7 +57,7 @@ ifeq ($(ARCH),x86)
 CFLAGS += -m32 -march=i686
 endif
 
-CFLAGS += -pthread -Wall -Iinclude -D_REENTRANT -ggdb -O3
+CFLAGS += -pthread -Wall -Iinclude -D_REENTRANT -ggdb -O3 
 
 #don't use split-stack on gcc 4.6 since it doesn't implement getcontext, setcontext, or makecontext
 GCC46 = $(shell $(CC) -v 2>&1 | grep "gcc.*4.6" > /dev/null; echo $$?)

@@ -129,3 +129,64 @@ void* wsd_work_stealing_deque_steal(wsd_work_stealing_deque_t* d) {
   }
   return ret;
 }
+
+
+void* wsd_work_stealing_deque_peek_bottom(wsd_work_stealing_deque_t* d, int64_t index_from_bottom) {
+  assert(d);
+  int64_t b = atomic_load_explicit(&d->bottom, memory_order_acquire);
+  int64_t t = atomic_load_explicit(&d->top, memory_order_acquire);
+
+  int64_t size = b - t;
+  if (index_from_bottom < 0 || index_from_bottom >= size) {
+      return NULL; // Out of bounds
+  }
+
+  // Calculate the correct index
+  int64_t target_index = b - 1 - index_from_bottom;
+
+  return wsd_circular_array_get(d->underlying_array, target_index);
+}
+
+
+void* wsd_work_stealing_deque_pop_at(wsd_work_stealing_deque_t* d, int64_t index_from_bottom) {
+  assert(d);
+  void* element = NULL;
+
+  while (1) {
+      int64_t b = atomic_load_explicit(&d->bottom, memory_order_acquire);
+      int64_t t = atomic_load_explicit(&d->top, memory_order_acquire);
+      int64_t size = b - t;
+
+      if (index_from_bottom < 0 || index_from_bottom >= size) {
+          return NULL; // Index out of bounds or empty deque
+      }
+
+      int64_t target_index = b - 1 - index_from_bottom;
+
+      wsd_circular_array_t* const a = d->underlying_array;
+      element = wsd_circular_array_get(a, target_index);
+
+      // Special case: popping bottom element directly
+      if (index_from_bottom == 0) {
+          if (atomic_compare_exchange_weak(&d->bottom, &b, b - 1)) {
+              return element;
+          }
+          // retry if CAS fails
+          continue;
+      }
+
+      // Attempt to reserve the deque state for popping at arbitrary index
+      if (!atomic_compare_exchange_weak(&d->bottom, &b, b - 1)) {
+          continue; // retry due to concurrent modification
+      }
+
+      // Shift elements down atomically
+      for (int64_t i = target_index; i < b - 1; ++i) {
+          void* next_element = wsd_circular_array_get(a, i + 1);
+          wsd_circular_array_put(a, i, next_element);
+      }
+
+      return element;
+  }
+}
+
