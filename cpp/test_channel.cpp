@@ -31,7 +31,7 @@ void* run_function(void* param) {
     ChannelType::event* e = eventSource->allocEvent(One);
     e->setPayload(i);
     if (eventSource->send(e)) {
-      fiber_yield();
+      fiber_yield(0);
     }
   }
 }
@@ -44,7 +44,7 @@ void* single_function(void* param) {
     SingleChannelType::event* e = eventSource->allocEvent(One);
     e->setPayload(i);
     if (eventSource->send(e)) {
-      fiber_yield();
+      fiber_yield(0);
     }
   }
 }

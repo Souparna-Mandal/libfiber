@@ -17,7 +17,7 @@ void* run_function(void* param) {
   fiber_barrier_wait(&barrier);
   int i;
   for (i = 0; i < PER_FIBER_COUNT; ++i) {
-    fiber_yield();
+    fiber_yield(0);
   }
   return NULL;
 }

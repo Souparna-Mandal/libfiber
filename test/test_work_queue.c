@@ -36,7 +36,7 @@ void* run_function(void* param) {
         free(work);
       }
     }
-    fiber_yield();
+    fiber_yield(0);
   }
   return NULL;
 }

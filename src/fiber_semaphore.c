@@ -85,7 +85,7 @@ int fiber_semaphore_post(fiber_semaphore_t* semaphore) {
   const int had_waiters = fiber_semaphore_post_internal(semaphore);
   if (had_waiters) {
     // the semaphore was contended - be nice and let the waiter run
-    fiber_yield();
+    fiber_yield(0);
   }
   return FIBER_SUCCESS;
 }

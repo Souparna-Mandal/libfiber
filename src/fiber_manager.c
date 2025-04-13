@@ -115,10 +115,6 @@ void fiber_manager_yield(fiber_manager_t* manager) {
   fiber_t* const current_fiber = manager->current_fiber;
   // printf("Current colour is %ld and fiber colour is %ld \n", colours,
   //         current_fiber->bitcolour);
-  if (current_fiber) {
-    reset_colour_scheduling_fiber_lock(current_fiber->bitcolour); //reset colour
-    // fiber_do_real_sleep(0, 1);
-  }
 
   while (1) {
     manager->yield_count += 1;
@@ -308,7 +304,7 @@ void fiber_shutdown() {
 
   while (!pthread_equal(this_thread, fiber_manager_threads[0])) {
     should_check_events = false;
-    fiber_yield();
+    fiber_yield(0);
     usleep(1000);
   }
   fiber_shutting_down = 1;

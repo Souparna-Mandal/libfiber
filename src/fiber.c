@@ -29,6 +29,7 @@ ull fiber_run_time = 0;
 void fiber_mark_completed(fiber_t* the_fiber, void* result) {
   atomic_store_explicit(&the_fiber->result, result, memory_order_release);
   reset_colour_scheduling_fiber_lock(the_fiber->bitcolour); // reset colour 
+  remove_fiber_from_locks(the_fiber); // remove fiber from locks
 
   if (the_fiber->detach_state != FIBER_DETACH_DETACHED) {
     const int old_state =
@@ -217,7 +218,7 @@ int fiber_tryjoin(fiber_t* f, void** result) {
   return FIBER_ERROR;
 }
 
-int fiber_yield() {
+int fiber_yield(int lock_free_yield) {
   fiber_manager_t* m = fiber_manager_get();
 #ifdef DEBUG
   gettimeofday(&m->end_time_d, NULL);
@@ -227,7 +228,13 @@ int fiber_yield() {
   }
 
 #endif
+if (lock_free_yield ==1){
   fiber_yield_lock_processing(m->current_fiber);
+  if (m->current_fiber) {
+    reset_colour_scheduling_fiber_lock(m->current_fiber->bitcolour); //reset colour
+    // fiber_do_real_sleep(0, 1);
+  }
+}
   fiber_manager_yield(m);
 #ifdef DEBUG
   gettimeofday(&m->start_time_d, NULL);
@@ -272,7 +279,7 @@ void remove_fiber_from_locks(fiber_t* f){
         Node *temp = current;
         current = current->next;
         sched_lock_t* lock = (sched_lock_t*)temp->value;
-        atomic_fetch_sub_explicit(&lock->num_holders, 1, memory_order_relaxed);
+        remove_locks(f, (void *)lock); // remove lock from the fiber's list of locks
     }
 }
 // llist_free(f->locks);
@@ -327,7 +334,7 @@ void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
     add_locks(f, lock); // add locks 
     set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, NULL);
     atomic_fetch_add_explicit(&s_lock->num_holders, 1, memory_order_relaxed); // update lock data 
-    fiber_yield();
+    fiber_yield(1);
     // we yield after setting the fiber colour for the first time for a lock
   }
 }
@@ -339,7 +346,8 @@ void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks bein
 
 void remove_locks(fiber_t* f, void* lock){
 
-  llist_delete(f->locks, lock);
+  atomic_fetch_sub_explicit(&((sched_lock_t *)lock)->num_holders, 1, memory_order_relaxed); // remove fiber from the lock's total helf fibers
+  llist_delete(f->locks, lock); // remove lock from the fiber's list of locks
 }
 
 void fiber_yield_lock_processing(fiber_t* fiber){

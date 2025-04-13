@@ -43,7 +43,7 @@ void sched_lock_acquire(struct sched_lock *lock)
     //         // ban_fibers(lock, NULL);
     //         // lock->lock_held = 0;
     //         // lock->slice_acquired = 0;
-    //         fiber_yield(); // Yield to Allow Others to get resources
+    //         fiber_yield(0); // Yield to Allow Others to get resources
     //     }
     // }
     lock->lock_held = 1;
@@ -58,7 +58,7 @@ void sched_lock_release(struct sched_lock *lock)
         // lock->holder = NULL;
         // ban_fibers(lock, NULL);
         // lock->lock_held = 0;
-        fiber_yield(); // Yield to Allow Others to get resources
+        fiber_yield(1); // Yield to Allow Others to get resources
         return;
     }
     lock->lock_held = 0;
