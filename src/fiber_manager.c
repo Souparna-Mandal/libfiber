@@ -144,7 +144,6 @@ void fiber_manager_yield(fiber_manager_t* manager) {
         fiber_scheduler_load_balance(manager->scheduler);
       }
       if (is_fiber_runable(current_fiber)){ // returns 1 for runable and 0 for now
-        // update_color_scheduling(current_fiber->bitcolour);
         break;
       }
       cur_fib_waiting = 1;

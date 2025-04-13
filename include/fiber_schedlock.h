@@ -21,13 +21,16 @@ typedef struct sched_lock {
     struct timeval start_ticks;
     struct timeval end_ticks;
     struct timeval slice_end_time;
-    _Atomic(fiber_t*) holder;
     // fiber_mutex_t mutex;
     // fiber_spinlock_t spinlock;
     lock_stats_t* lock_stat;
-    atomic_int slice_state;
-    atomic_int lock_held;
+    // atomic_int slice_state;
+    // atomic_int lock_held;
     atomic_int num_holders;
+    // _Atomic(fiber_t*) holder;
+    int slice_state;
+    int lock_held;
+    fiber_t* holder;
 
 } sched_lock_t;
 

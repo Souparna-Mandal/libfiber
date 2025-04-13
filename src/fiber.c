@@ -28,7 +28,8 @@ ull fiber_run_time = 0;
 
 void fiber_mark_completed(fiber_t* the_fiber, void* result) {
   atomic_store_explicit(&the_fiber->result, result, memory_order_release);
-  reset_colour_scheduling_fiber_lock(the_fiber->bitcolour); // reset colour 
+  reset_colour_scheduling_fiber_lock(the_fiber->bitcolour); // reset colour
+  // remove_fiber_from_locks(the_fiber);
 
   if (the_fiber->detach_state != FIBER_DETACH_DETACHED) {
     const int old_state =
@@ -274,10 +275,10 @@ void remove_fiber_from_locks(fiber_t* f){
   if (f->locks) {
     Node *current = f->locks->head;
     while (current) {
-        Node *temp = current;
         current = current->next;
-        sched_lock_t* lock = (sched_lock_t*)temp->value;
-        atomic_fetch_sub_explicit(&lock->num_holders, 1, memory_order_relaxed);
+        sched_lock_t* slock = (sched_lock_t*)current->value;
+        atomic_fetch_sub_explicit(&slock->num_holders, 1, memory_order_relaxed);
+        current = current->next;
     }
 }
 // llist_free(f->locks);
@@ -343,7 +344,8 @@ void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks bein
 }
 
 void remove_locks(fiber_t* f, void* lock){
-
+  sched_lock_t* lock_s = (sched_lock_t*)lock;
+  atomic_fetch_sub_explicit(&lock_s->num_holders, 1, memory_order_relaxed);
   llist_delete(f->locks, lock);
 }
 
@@ -367,9 +369,12 @@ void fiber_yield_lock_processing(fiber_t* fiber){
     lock->lock_stat->banned_until = (struct timeval){0, 0};
     lock->lock_stat->slice_size = (struct timeval){0, 0};
     
-    atomic_store_explicit(&lock->holder, NULL, memory_order_release);
-    atomic_store_explicit(&lock->slice_state, SLICE_FREE, memory_order_release);
-    atomic_store_explicit(&lock->lock_held, 0, memory_order_release);
+    // atomic_store_explicit(&lock->holder, NULL, memory_order_release);
+    // atomic_store_explicit(&lock->slice_state, SLICE_FREE, memory_order_release);
+    // atomic_store_explicit(&lock->lock_held, 0, memory_order_release);
+    lock->holder = NULL;
+    lock->slice_state = SLICE_FREE;
+    lock->lock_held = 0;
 
     current = current->next;
   }

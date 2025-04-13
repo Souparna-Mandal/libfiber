@@ -147,7 +147,7 @@ int is_fiber_runable(fiber_t* fiber){
   }
 
   if (!try_update_colour(fib_colour)) { 
-    // try_free_expired_slices(locks);
+    try_free_expired_slices(locks);
     pthread_spin_unlock(&scheduler_spinlock);
     return 0;  // Not runsable 
   }
@@ -185,10 +185,14 @@ void try_free_expired_slices(LinkedList* locks) {
         continue; // Can do optimisation where we only go through conflicting colours #TODO
       }
       fiber_spinlock_lock(&free_slice);
-      if (timercmp(&now, &sched_lock->slice_end_time, >) &&
-      (atomic_load_explicit(&sched_lock->lock_held, memory_order_acquire) == 0) &&
-      (atomic_load_explicit(&sched_lock->slice_state, memory_order_acquire) == SLICE_ACTIVE)) { // This lock_held check prevents us from premting the lock in the critical section
-          atomic_store_explicit(&sched_lock->slice_state, SLICE_RESETTING, memory_order_release);  
+      // if (timercmp(&now, &sched_lock->slice_end_time, >) &&
+      // (atomic_load_explicit(&sched_lock->lock_held, memory_order_acquire) == 0) &&
+      // (atomic_load_explicit(&sched_lock->slice_state, memory_order_acquire) == SLICE_ACTIVE)) { // This lock_held check prevents us from premting the lock in the critical section
+      //     atomic_store_explicit(&sched_lock->slice_state, SLICE_RESETTING, memory_order_release);  
+    if (timercmp(&now, &sched_lock->slice_end_time, >) &&
+      (sched_lock->lock_held == 0) &&
+      (sched_lock->slice_state == SLICE_ACTIVE)) { // This lock_held check prevents us from premting the lock in the critical section
+          sched_lock->slice_state = SLICE_RESETTING;  
           fiber_spinlock_unlock(&free_slice);
         // Mark the slice as expired.
           ban_fibers((void*)sched_lock, holder);
@@ -197,8 +201,10 @@ void try_free_expired_slices(LinkedList* locks) {
 
           holder->bitcolour &= ~(1 << lock_index); // reset the lock usage, assume lock is unwanted
           colours &= ~(1 << lock_index); //reset and release slice
-          atomic_store_explicit(&sched_lock->holder, NULL, memory_order_release);
-          atomic_store_explicit(&sched_lock->slice_state, SLICE_FREE, memory_order_release);
+          // atomic_store_explicit(&sched_lock->holder, NULL, memory_order_release);
+          // atomic_store_explicit(&sched_lock->slice_state, SLICE_FREE, memory_order_release);
+          sched_lock->holder = NULL;
+          sched_lock->slice_state = SLICE_FREE;
       }
       else{fiber_spinlock_unlock(&free_slice);}
       current = current->next;
