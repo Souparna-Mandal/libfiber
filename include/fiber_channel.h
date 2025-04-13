@@ -86,7 +86,7 @@ static inline int fiber_bounded_channel_send(fiber_bounded_channel_t* channel,
       }
       return 0;
     }
-    fiber_yield();
+    fiber_yield(0);
   }
   return 0;
 }
@@ -113,7 +113,7 @@ static inline void* fiber_bounded_channel_receive(
     if (channel->ready_signal) {
       fiber_signal_wait(channel->ready_signal);
     } else {
-      fiber_yield();
+      fiber_yield(0);
     }
   }
   return NULL;

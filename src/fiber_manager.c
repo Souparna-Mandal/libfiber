@@ -109,19 +109,17 @@ static inline void fiber_manager_switch_to(fiber_manager_t* manager,
 }
 
 void fiber_manager_yield(fiber_manager_t* manager) {
+  int cur_fib_waiting = 0; // flag to mark that the current fiber is waiting
   assert(fiber_manager_state == FIBER_MANAGER_STATE_STARTED);
   assert(manager);
 
   fiber_t* const current_fiber = manager->current_fiber;
   // printf("Current colour is %ld and fiber colour is %ld \n", colours,
   //         current_fiber->bitcolour);
-  if (current_fiber) {
-    reset_colour_scheduling_fiber_lock(current_fiber->bitcolour); //reset colour
-    // fiber_do_real_sleep(0, 1);
-  }
-
   while (1) {
-    manager->yield_count += 1;
+    if (!cur_fib_waiting){
+      manager->yield_count += 1;
+    }
     const fiber_state_t state = current_fiber->state;
 
     fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, current_fiber);
@@ -131,7 +129,6 @@ void fiber_manager_yield(fiber_manager_t* manager) {
     } 
     else if (FIBER_STATE_WAITING == state || FIBER_STATE_DONE == state ||
                FIBER_STATE_SAVING_STATE_TO_WAIT == state) {
-    // else if (FIBER_STATE_DONE == state) {
       if (!manager->maintenance_fiber) {
         manager->maintenance_fiber =
             fiber_create_no_sched(102400, &fiber_manager_thread_func, manager);
@@ -146,11 +143,11 @@ void fiber_manager_yield(fiber_manager_t* manager) {
       if ((manager->yield_count & 1023) == 0) {
         fiber_scheduler_load_balance(manager->scheduler);
       }
-
-      if (is_fiber_runable(current_fiber)){ // retursn 1 for runable and 0 for now
+      if (is_fiber_runable(current_fiber)){ // returns 1 for runable and 0 for now
         // update_color_scheduling(current_fiber->bitcolour);
         break;
       }
+      cur_fib_waiting = 1;
     }
   }
 }
@@ -238,6 +235,7 @@ int fiber_manager_init(size_t num_threads) {
   colours = 0;
   pthread_spin_init(&scheduler_spinlock, PTHREAD_PROCESS_PRIVATE);
   fiber_spinlock_init(&lock_index);
+  fiber_spinlock_init(&free_slice);
   lock_fiber_d = create_hashmap2d(MAX_LOCKS * MAX_FIBS);
   locks_to_indices = hashmap_create();
   current_lock_index = 0;
@@ -308,7 +306,7 @@ void fiber_shutdown() {
 
   while (!pthread_equal(this_thread, fiber_manager_threads[0])) {
     should_check_events = false;
-    fiber_yield();
+    fiber_yield(1);
     usleep(1000);
   }
   fiber_shutting_down = 1;

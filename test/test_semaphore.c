@@ -21,7 +21,7 @@ void* run_function(void* param) {
     const int new_after_grab = __sync_add_and_fetch(&counter, 1);
     test_assert(new_after_grab <= SEMAPHORE_VALUE);
     __sync_add_and_fetch(&old_values[new_after_grab - 1], 1);
-    fiber_yield();
+    fiber_yield(0);
     const int new_after_release = __sync_sub_and_fetch(&counter, 1);
     test_assert(new_after_release >= 0);
     __sync_add_and_fetch(&new_values[new_after_release], 1);

@@ -19,7 +19,7 @@ void* run_function(void* param) {
       atomic_fetch_add(&switch_count, 1);
     }
     atomic_fetch_add(&per_thread_count[current_manager->id], 1);
-    fiber_yield();
+    fiber_yield(0);
   }
   return NULL;
 }

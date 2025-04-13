@@ -70,7 +70,7 @@ int fiber_mutex_unlock(fiber_mutex_t* mutex) {
   const int contended = fiber_mutex_unlock_internal(mutex);
   if (contended) {
     // the lock was contended - be nice and let the waiter run
-    fiber_yield();
+    fiber_yield(0);
   }
 
   return FIBER_SUCCESS;

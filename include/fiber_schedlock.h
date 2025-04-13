@@ -11,17 +11,22 @@
 #define SLICE_SIZE_US 200
 
 // static struct timeval inactive_threshold = {1, 0}; 
+typedef enum {
+    SLICE_FREE = 0,      // The slice is free.
+    SLICE_ACTIVE = 1,    // The slice is currently in use.
+    SLICE_RESETTING = 2  // A reset/cleanup is in progress.
+} slice_state_t;
 
 typedef struct sched_lock {
     struct timeval start_ticks;
     struct timeval end_ticks;
     struct timeval slice_end_time;
-    fiber_t* holder;
+    _Atomic(fiber_t*) holder;
     // fiber_mutex_t mutex;
     // fiber_spinlock_t spinlock;
     lock_stats_t* lock_stat;
-    int slice_acquired;
-    int lock_held;
+    atomic_int slice_state;
+    atomic_int lock_held;
     atomic_int num_holders;
 
 } sched_lock_t;

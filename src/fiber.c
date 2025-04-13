@@ -217,7 +217,7 @@ int fiber_tryjoin(fiber_t* f, void** result) {
   return FIBER_ERROR;
 }
 
-int fiber_yield() {
+int fiber_yield(int lock_free_yield) {
   fiber_manager_t* m = fiber_manager_get();
 #ifdef DEBUG
   gettimeofday(&m->end_time_d, NULL);
@@ -227,7 +227,12 @@ int fiber_yield() {
   }
 
 #endif
-  fiber_yield_lock_processing(m->current_fiber);
+  if (lock_free_yield){
+    fiber_yield_lock_processing(m->current_fiber);
+    if (m->current_fiber) {
+      reset_colour_scheduling_fiber_lock(m->current_fiber->bitcolour); //reset colour
+    }
+  }
   fiber_manager_yield(m);
 #ifdef DEBUG
   gettimeofday(&m->start_time_d, NULL);
@@ -327,7 +332,7 @@ void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
     add_locks(f, lock); // add locks 
     set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, NULL);
     atomic_fetch_add_explicit(&s_lock->num_holders, 1, memory_order_relaxed); // update lock data 
-    fiber_yield();
+    fiber_yield(1);
     // we yield after setting the fiber colour for the first time for a lock
   }
 }
@@ -355,14 +360,16 @@ void fiber_yield_lock_processing(fiber_t* fiber){
     }
     ban_fibers(lock, fiber);
 
-    /*Reset Stats*/
+    /*Reset LOCK*/
     lock->start_ticks = (struct timeval){0, 0};
     lock->end_ticks = (struct timeval){0, 0};
     lock->slice_end_time = (struct timeval){0, 0};
-
-    lock->holder = NULL;
-    lock->slice_acquired = 0;
-    lock->lock_held = 0;
+    lock->lock_stat->banned_until = (struct timeval){0, 0};
+    lock->lock_stat->slice_size = (struct timeval){0, 0};
+    
+    atomic_store_explicit(&lock->holder, NULL, memory_order_release);
+    atomic_store_explicit(&lock->slice_state, SLICE_FREE, memory_order_release);
+    atomic_store_explicit(&lock->lock_held, 0, memory_order_release);
 
     current = current->next;
   }

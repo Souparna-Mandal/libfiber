@@ -28,7 +28,7 @@ int main() {
     fibers[i] = fiber_create(20000, &run_function, NULL);
   }
 
-  fiber_yield();
+  fiber_yield(0);
 
   for (i = 0; i < PER_FIBER_COUNT; ++i) {
     fiber_manager_wake_from_mpsc_queue(fiber_manager_get(), &fifo, NUM_FIBERS);

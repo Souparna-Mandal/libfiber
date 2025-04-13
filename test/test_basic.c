@@ -7,7 +7,7 @@
 void* run_function(void* param) {
   int* value = (int*)param;
   *value += 1;
-  fiber_yield();
+  fiber_yield(0);
   *value += 1;
   return NULL;
 }
@@ -22,16 +22,16 @@ int main() {
   int volatile value = 0;
   fiber_t* fiber1 = fiber_create(20000, &run_function, (void*)&value);
 
-  fiber_yield();
+  fiber_yield(0);
   test_assert(value == 1);
   fiber_join(fiber1, NULL);
   test_assert(value == 2);
 
   fiber_t* fiber2 = fiber_create(20000, &run_function, (void*)&value);
 
-  fiber_yield();
+  fiber_yield(0);
   test_assert(value == 3);
-  fiber_yield();
+  fiber_yield(0);
   test_assert(value == 4);
 
   // now the fiber has finished, but joining fiber2 should still be fine
@@ -39,7 +39,7 @@ int main() {
 
   // let fiber 2 do its maintenance (it needs to set state = DONE after we've
   // joined it)
-  fiber_yield();
+  fiber_yield(0);
 
   fiber_manager_print_stats();
   fiber_shutdown();

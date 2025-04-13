@@ -24,6 +24,7 @@ extern hashmap_t* locks_to_indices;
 extern hashmap2d* lock_fiber_d;
 extern uint64_t colours;
 extern fiber_spinlock_t lock_index;
+extern fiber_spinlock_t free_slice;
 extern int current_lock_index;
 /* End of Data Structures Required for Fair Lock Scheduler*/
 
