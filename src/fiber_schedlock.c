@@ -5,23 +5,28 @@ void sched_lock_init(struct sched_lock *lock)
     lock->start_ticks = (struct timeval){0, 0};
     lock->end_ticks = (struct timeval){0, 0};
     lock->slice_end_time = (struct timeval){0, 0};
-    lock->slice_acquired = 0; // can be used to track is lock is held 
     lock->lock_stat = malloc(sizeof(lock_stats_t));
     lock->lock_stat->banned_until = (struct timeval){0, 0};
     lock->lock_stat->slice_size = (struct timeval){0, 0};
-    lock->lock_held = 0;
     lock->holder = NULL;
     lock->num_holders = 0;
-    // fiber_spinlock_init(&lock->spinlock);
+    fiber_spinlock_init(&lock->reset_lock);
 }
 
 void sched_lock_acquire(struct sched_lock *lock)
 {
-    // Assuming that only one fiber can request acquire at a time 
-// lock_start:
+lock_start:
     // Colour if UnColoured and Record Lock.
-    record_lock_for_fiber((void*)lock, SLICE_SIZE_US, NULL);
-    if (lock->slice_acquired == 0){
+    fiber_spinlock_lock(&lock->reset_lock);
+    // printf(" Locking in acquire\n");
+    if (record_lock_for_fiber((void*)lock, SLICE_SIZE_US, NULL)){
+        goto lock_start;
+    }
+    lock->lock_held = 1;
+    fiber_spinlock_unlock(&lock->reset_lock);
+    // printf(" UNLocking in acquire\n");
+
+    if (lock->holder == NULL){
         // Record the start time.
         gettimeofday(&lock->start_ticks, NULL);
         
@@ -32,7 +37,6 @@ void sched_lock_acquire(struct sched_lock *lock)
         }
         // Compute the slice end time.
         timeval_add(&lock->slice_end_time, &lock->start_ticks, &lock->lock_stat->slice_size);
-        lock->slice_acquired = 1;
         lock->holder = fiber_manager_get()->current_fiber;
     }
     // else{
@@ -42,7 +46,6 @@ void sched_lock_acquire(struct sched_lock *lock)
     //         goto lock_start;
     //     }
     // }
-    lock->lock_held = 1;
 }
 
 void sched_lock_release(struct sched_lock *lock)
@@ -50,10 +53,6 @@ void sched_lock_release(struct sched_lock *lock)
 
     gettimeofday(&lock->end_ticks, NULL); // we use the last possible end-ticks 
     if (timercmp(&lock->end_ticks, &lock->slice_end_time,>)){ // enter if slice has expired
-        // lock->slice_acquired = 0;
-        // lock->holder = NULL;
-        // ban_fibers(lock, NULL);
-        // lock->lock_held = 0;
         fiber_yield(1); // Yield to Allow Others to get resources
         return;
     }
@@ -87,4 +86,15 @@ void ban_fibers(struct sched_lock *lock , fiber_t* fiber){
       set_lock_fiber_data((void *)lock, lock->end_ticks,
                           (struct timeval){0, SLICE_SIZE_US}, fiber);
     }
+}
+
+void reset_lock(struct sched_lock *lock){
+    // Reset the lock statistics.
+    lock->start_ticks = (struct timeval){0, 0};
+    lock->end_ticks = (struct timeval){0, 0};
+    lock->slice_end_time = (struct timeval){0, 0};
+    lock->lock_stat->banned_until = (struct timeval){0, 0};
+    lock->lock_stat->slice_size = (struct timeval){0, 0};
+    lock->holder = NULL; // indication of whether slice is held 
+    lock->lock_held = 0; // can be used to track is lock is held 
 }

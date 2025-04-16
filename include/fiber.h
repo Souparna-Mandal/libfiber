@@ -84,7 +84,7 @@ void set_lock_fiber_data(void* lock, struct timeval ban_time,
                          struct timeval time_slice, fiber_t* fiber);
 lock_stats_t* get_lock_fiber_data(void* lock, lock_stats_t* lock_stat,
                                   fiber_t* f);
-void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f);
+int record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f);
 void add_locks(fiber_t* f, void* lock);
 void remove_locks(fiber_t* f, void* lock);
 LinkedList* get_locks(fiber_t* f);

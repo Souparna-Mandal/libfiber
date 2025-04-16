@@ -16,12 +16,10 @@ typedef struct sched_lock {
     struct timeval start_ticks;
     struct timeval end_ticks;
     struct timeval slice_end_time;
-    fiber_t* holder;
-    // fiber_mutex_t mutex;
-    // fiber_spinlock_t spinlock;
-    lock_stats_t* lock_stat;
-    int slice_acquired;
+    fiber_spinlock_t reset_lock;
+    lock_stats_t *lock_stat;
     int lock_held;
+    fiber_t* holder;
     atomic_int num_holders;
 
 } sched_lock_t;
@@ -34,5 +32,7 @@ void sched_lock_acquire(struct sched_lock *lock);
 void sched_lock_release(struct sched_lock *lock);
 
 void ban_fibers(struct sched_lock *lock, fiber_t* holder);
+
+void reset_lock(struct sched_lock *lock);
 
 #endif

@@ -281,8 +281,8 @@ void remove_fiber_from_locks(fiber_t* f){
         sched_lock_t* lock = (sched_lock_t*)temp->value;
         remove_locks(f, (void *)lock); // remove lock from the fiber's list of locks
     }
-}
-// llist_free(f->locks);
+  }
+  // free(f->locks);
 }
 
 // This is needed to find the index each lock corresponds to in the colours vector
@@ -322,7 +322,7 @@ lock_stats_t* get_lock_fiber_data(void* lock, lock_stats_t* lock_stat, fiber_t* 
 
 // Assign colours to threads (Auto-Colouring)
 // Add and associate it with exsiting fibers 
-void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
+int record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
   if (f == NULL){
     f = fiber_manager_get()->current_fiber;
   }
@@ -330,13 +330,18 @@ void record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
   int lock_index = get_lock_index(lock);
   if (((f->bitcolour) & (1 << lock_index)) == 0) {  // This means if this is 1 then lock has been previously recorded
     // printf("Recording a lock  of index %d\n", lock_index);
+
+    fiber_spinlock_unlock(&s_lock->reset_lock);
+    // printf(" UNLocking in colour set\n");
     set_fib_colour(f, lock_index, lock);
     add_locks(f, lock); // add locks 
-    set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, NULL);
+    set_lock_fiber_data(lock, /* ban time*/ (struct timeval){0,0}, /* slice time */ (struct timeval){0, slice_size_us}, f);
     atomic_fetch_add_explicit(&s_lock->num_holders, 1, memory_order_relaxed); // update lock data 
     fiber_yield(1);
+    return 1;
     // we yield after setting the fiber colour for the first time for a lock
   }
+  return 0;
 }
 
 void add_locks(fiber_t* f, void* lock) { // Add a lock to the list of locks being used by the fiber 
@@ -362,15 +367,7 @@ void fiber_yield_lock_processing(fiber_t* fiber){
       continue;
     }
     ban_fibers(lock, fiber);
-
-    /*Reset Stats*/
-    lock->start_ticks = (struct timeval){0, 0};
-    lock->end_ticks = (struct timeval){0, 0};
-    lock->slice_end_time = (struct timeval){0, 0};
-
-    lock->holder = NULL;
-    lock->slice_acquired = 0;
-    lock->lock_held = 0;
+    reset_lock(lock);
 
     current = current->next;
   }

@@ -1,4 +1,5 @@
 #include "linked_list.h"
+#include <stdio.h>
 
 LinkedList *llist_create(void) {
     LinkedList *list = (LinkedList *)malloc(sizeof(LinkedList));
@@ -25,18 +26,20 @@ int llist_delete(LinkedList *list, void *value) {
     }
 
     Node *current = list->head;
-    Node *previous = NULL;
 
     // Check if the head node is the one to be deleted.
     if (current->value == value) {
+        // printf("Deleting element %p and lock %p \n",current, value);
         list->head = current->next;
         free(current);
         return 1;
     }
-
-    // Search through the rest of the list.
+    current = current->next;
+    Node *previous = list->head;
+    // Search through the rest of the list
     while (current != NULL) {
         if (current->value == value) {
+            // printf("Deleting element %p and lock %p \n",current, value);
             previous->next = current->next;
             free(current);
             return 1;
