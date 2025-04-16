@@ -18,8 +18,7 @@ void sched_lock_init(struct sched_lock *lock)
 void sched_lock_acquire(struct sched_lock *lock)
 {
     // Assuming that only one fiber can request acquire at a time 
-
-
+// lock_start:
     // Colour if UnColoured and Record Lock.
     record_lock_for_fiber((void*)lock, SLICE_SIZE_US, NULL);
     if (lock->slice_acquired == 0){
@@ -39,11 +38,8 @@ void sched_lock_acquire(struct sched_lock *lock)
     // else{
     //     gettimeofday(&lock->end_ticks, NULL); // we use the last possible end-ticks 
     //     if (timercmp(&lock->end_ticks, &lock->slice_end_time,>)){ // enter if slice has expired
-    //         // lock->holder = NULL;
-    //         // ban_fibers(lock, NULL);
-    //         // lock->lock_held = 0;
-    //         // lock->slice_acquired = 0;
-    //         fiber_yield(0); // Yield to Allow Others to get resources
+    //         fiber_yield(1); // Yield to Allow Others to get resources
+    //         goto lock_start;
     //     }
     // }
     lock->lock_held = 1;

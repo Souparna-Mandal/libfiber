@@ -304,7 +304,7 @@ void fiber_shutdown() {
 
   while (!pthread_equal(this_thread, fiber_manager_threads[0])) {
     should_check_events = false;
-    fiber_yield(0);
+    fiber_yield(1);
     usleep(1000);
   }
   fiber_shutting_down = 1;
