@@ -99,6 +99,7 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
   ret->id += 1;
   ret->bitcolour = 0;
   ret->locks = llist_create();
+  ret->force_prempt = 0;
   if (FIBER_SUCCESS !=
       fiber_context_init(&ret->context, stack_size, &fiber_go_function, ret)) {
     free(ret);
@@ -139,6 +140,7 @@ fiber_t* fiber_create_from_thread() {
   ret->id = 1;
   ret->bitcolour = 0;
   ret->locks = llist_create();
+  ret->force_prempt = 0;
   if (FIBER_SUCCESS != fiber_context_init_from_thread(&ret->context)) {
     free(ret);
     return NULL;
@@ -232,6 +234,7 @@ if (lock_free_yield ==1){
   fiber_yield_lock_processing(m->current_fiber);
   if (m->current_fiber) {
     reset_colour_scheduling_fiber_lock(m->current_fiber->bitcolour); //reset colour
+    m->current_fiber->force_prempt = 0;
     // fiber_do_real_sleep(0, 1);
   }
 }
