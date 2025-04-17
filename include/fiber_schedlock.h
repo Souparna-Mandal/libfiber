@@ -16,7 +16,6 @@ typedef struct sched_lock {
     struct timeval start_ticks;
     struct timeval end_ticks;
     struct timeval slice_end_time;
-    fiber_spinlock_t reset_lock;
     lock_stats_t *lock_stat;
     int lock_held;
     fiber_t* holder;

@@ -39,6 +39,7 @@ typedef struct fiber {
   void* param;
   uint64_t volatile id; /* not unique globally, only within this fiber instance.
                            used for joining */
+  int force_prempt;
   fiber_context_t context;
   _Atomic(void*) result;
   mpsc_fifo_node_t* volatile mpsc_fifo_node;

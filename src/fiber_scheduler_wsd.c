@@ -183,21 +183,9 @@ void try_free_expired_slices(LinkedList* locks) {
       if (holder == NULL){
         continue; // Can do optimisation where we only go through conflicting colours #TODO
       }
-      // printf(" Locking in free colour\n");
-      fiber_spinlock_lock(&sched_lock->reset_lock);
       if ((timercmp(&now, &sched_lock->slice_end_time, >)) && (sched_lock->lock_held == 0) && (sched_lock->holder != NULL) ){ // This lock_held check prevents us from premting the lock in the critical section
-        // Mark the slice as expired.
-          ban_fibers((void*)sched_lock, holder);
-          remove_locks(holder, (void*)sched_lock);
-          reset_lock(sched_lock); // Reset the lock
-
-          // UPDATE COLOURS for fiber and scheduler
-          int lock_index = get_lock_index((void*)sched_lock);
-          holder->bitcolour &= ~(1 << lock_index); // reset the lock usage, assume lock is unwanted
-          colours &= ~(1 << lock_index); //reset and release slice
+         holder->force_prempt = 1; 
       }
-      fiber_spinlock_unlock(&sched_lock->reset_lock);
-      // printf(" UNLocking in free colour\n");
   }
 }
 
@@ -221,10 +209,6 @@ fiber_t* fiber_scheduler_next(fiber_scheduler_t* sched, fiber_t * current_fiber)
         wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber);
       }
       
-      // else if (!try_update_colour(new_fiber->bitcolour)){
-      //   wsd_work_stealing_deque_push_bottom(scheduler->store_to, new_fiber);
-      // }
-
       else {
         // update_color_scheduling(new_fiber->bitcolour);
         return new_fiber;

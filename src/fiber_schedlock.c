@@ -10,42 +10,30 @@ void sched_lock_init(struct sched_lock *lock)
     lock->lock_stat->slice_size = (struct timeval){0, 0};
     lock->holder = NULL;
     lock->num_holders = 0;
-    fiber_spinlock_init(&lock->reset_lock);
 }
 
 void sched_lock_acquire(struct sched_lock *lock)
 {
 lock_start:
-    // Colour if UnColoured and Record Lock.
-    fiber_spinlock_lock(&lock->reset_lock);
-    // printf(" Locking in acquire\n");
-    if (record_lock_for_fiber((void*)lock, SLICE_SIZE_US, NULL)){
-        goto lock_start;
+  record_lock_for_fiber((void *)lock, SLICE_SIZE_US, NULL);
+  lock->lock_held = 1;
+  if (lock->holder == NULL) {
+    gettimeofday(&lock->start_ticks, NULL);
+    if (get_lock_fiber_data((void *)lock, lock->lock_stat, NULL) == 0) {
+      printf("Error: No Stats, something is wrong.\n");
+      abort();
     }
-    lock->lock_held = 1;
-    fiber_spinlock_unlock(&lock->reset_lock);
-    // printf(" UNLocking in acquire\n");
-
-    if (lock->holder == NULL){
-        // Record the start time.
-        gettimeofday(&lock->start_ticks, NULL);
-        
-        // Retrieve the fiber's lock statistics.
-        if (get_lock_fiber_data((void*)lock, lock->lock_stat, NULL) == 0){
-            printf("Error: No Stats, something is wrong.\n");
-            abort();
-        }
-        // Compute the slice end time.
-        timeval_add(&lock->slice_end_time, &lock->start_ticks, &lock->lock_stat->slice_size);
-        lock->holder = fiber_manager_get()->current_fiber;
+    // Compute the slice end time.
+    timeval_add(&lock->slice_end_time, &lock->start_ticks,
+                &lock->lock_stat->slice_size);
+    lock->holder = fiber_manager_get()->current_fiber;
+  }
+  else{
+    if (lock->holder->force_prempt){
+      fiber_yield(1);
+      goto lock_start;
     }
-    // else{
-    //     gettimeofday(&lock->end_ticks, NULL); // we use the last possible end-ticks 
-    //     if (timercmp(&lock->end_ticks, &lock->slice_end_time,>)){ // enter if slice has expired
-    //         fiber_yield(1); // Yield to Allow Others to get resources
-    //         goto lock_start;
-    //     }
-    // }
+  }
 }
 
 void sched_lock_release(struct sched_lock *lock)

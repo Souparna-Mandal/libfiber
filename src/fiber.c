@@ -99,6 +99,7 @@ fiber_t* fiber_create_no_sched(size_t stack_size,
   ret->id += 1;
   ret->bitcolour = 0;
   ret->locks = llist_create();
+  ret->force_prempt = 0;
   if (FIBER_SUCCESS !=
       fiber_context_init(&ret->context, stack_size, &fiber_go_function, ret)) {
     free(ret);
@@ -138,6 +139,7 @@ fiber_t* fiber_create_from_thread() {
   ret->result = NULL;
   ret->id = 1;
   ret->bitcolour = 0;
+  ret->force_prempt = 0;
   ret->locks = llist_create();
   if (FIBER_SUCCESS != fiber_context_init_from_thread(&ret->context)) {
     free(ret);
@@ -231,7 +233,8 @@ int fiber_yield(int lock_free_yield) {
 if (lock_free_yield ==1){
   fiber_yield_lock_processing(m->current_fiber);
   if (m->current_fiber) {
-    reset_colour_scheduling_fiber_lock(m->current_fiber->bitcolour); //reset colour
+    reset_colour_scheduling_fiber_lock(m->current_fiber->bitcolour);
+    m->current_fiber->force_prempt = 0;
     // fiber_do_real_sleep(0, 1);
   }
 }
@@ -330,8 +333,6 @@ int record_lock_for_fiber(void* lock, int slice_size_us, fiber_t* f){
   int lock_index = get_lock_index(lock);
   if (((f->bitcolour) & (1 << lock_index)) == 0) {  // This means if this is 1 then lock has been previously recorded
     // printf("Recording a lock  of index %d\n", lock_index);
-
-    fiber_spinlock_unlock(&s_lock->reset_lock);
     // printf(" UNLocking in colour set\n");
     set_fib_colour(f, lock_index, lock);
     add_locks(f, lock); // add locks 
@@ -368,7 +369,6 @@ void fiber_yield_lock_processing(fiber_t* fiber){
     }
     ban_fibers(lock, fiber);
     reset_lock(lock);
-
     current = current->next;
   }
 }
