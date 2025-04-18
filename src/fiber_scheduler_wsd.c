@@ -258,3 +258,5 @@ void fiber_scheduler_stats(fiber_scheduler_t* sched, uint64_t* steal_count,
   *steal_count += scheduler->steal_count;
   *failed_steal_count += scheduler->failed_steal_count;
 }
+
+void print_colour() { printf("Color array is %ld\n", colours);}

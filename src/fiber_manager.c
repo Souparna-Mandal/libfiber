@@ -18,6 +18,7 @@
 #define __USE_GNU
 #endif
 #include <dlfcn.h>
+#include <stdatomic.h>
 
 #include "lockfree_ring_buffer.h"
 
@@ -41,13 +42,14 @@ void splitstack_disable_block_signals() {
 #endif
 
 #define FIBER_MANAGER_MAX_HAZARDS (MPMC_HAZARD_COUNT)
+static atomic_bool fiber_shutting_down = ATOMIC_VAR_INIT(false);
 
 static int fiber_manager_state = FIBER_MANAGER_STATE_NONE;
 static int fiber_manager_num_threads = 0;
 static pthread_t* fiber_manager_threads = NULL;
 static __thread volatile pthread_t this_thread;
 static fiber_manager_t** fiber_managers = NULL;
-static volatile int fiber_shutting_down = 0;
+// static volatile int fiber_shutting_down = 0;
 static _Atomic(lockfree_ring_buffer_t*) fiber_free_mpmc_nodes = NULL;
 static _Atomic(hazard_pointer_thread_record_t*) fiber_hazard_head = NULL;
 
@@ -181,7 +183,8 @@ static void* fiber_manager_thread_func(void* param) {
     this_thread = pthread_self();
   }
 
-  while (!fiber_shutting_down) {
+  // while (!fiber_shutting_down) {
+  while (!atomic_load_explicit(&fiber_shutting_down, memory_order_acquire)) {
     fiber_scheduler_load_balance(manager->scheduler);
 
     fiber_t* const new_fiber = fiber_scheduler_next(manager->scheduler, NULL);
@@ -297,17 +300,19 @@ void fiber_shutdown() {
   // Note: 'this_thread' is used instead of simply calling pthread_self()
   // because gcc will hoist the call to pthread_self() out of the loop and we'll
   // never terminate.
-
+  atomic_store_explicit(&fiber_shutting_down, true, memory_order_seq_cst);
   #ifdef DEBUG
   printf("The total runtime of fibers is %lld \n", fiber_run_time);
 #endif
 
-  while (!pthread_equal(this_thread, fiber_manager_threads[0])) {
-    should_check_events = false;
-    fiber_yield(1);
-    usleep(1000);
-  }
-  fiber_shutting_down = 1;
+  // while (!pthread_equal(this_thread, fiber_manager_threads[0])) {
+  //   should_check_events = false;
+  //   fiber_yield(1);
+  //   usleep(1000);
+  // }
+
+  // fiber_shutting_down = 1;
+
   int i;
   for (i = 1; i < fiber_manager_num_threads; ++i) {
     pthread_join(fiber_manager_threads[i], NULL);

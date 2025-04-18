@@ -57,7 +57,7 @@ void fiber_scheduler_load_balance(fiber_scheduler_t* scheduler);
 
 void fiber_scheduler_stats(fiber_scheduler_t* scheduler, uint64_t* steal_count,
                            uint64_t* failed_steal_count);
-
+void print_colour();
 #ifdef __cplusplus
 }
 #endif

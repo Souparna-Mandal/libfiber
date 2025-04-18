@@ -28,9 +28,14 @@ ull fiber_run_time = 0;
 
 void fiber_mark_completed(fiber_t* the_fiber, void* result) {
   atomic_store_explicit(&the_fiber->result, result, memory_order_release);
-  reset_colour_scheduling_fiber_lock(the_fiber->bitcolour); // reset colour 
-  remove_fiber_from_locks(the_fiber); // remove fiber from locks
 
+  fiber_yield_lock_processing(the_fiber);
+  the_fiber->force_prempt = 0;
+  remove_fiber_from_locks(the_fiber);  // remove fiber from locks
+
+  // print_colour();
+  reset_colour_scheduling_fiber_lock(the_fiber->bitcolour);  // reset colour
+  // print_colour();
   if (the_fiber->detach_state != FIBER_DETACH_DETACHED) {
     const int old_state =
         atomic_exchange(&the_fiber->detach_state, FIBER_DETACH_WAIT_FOR_JOINER);
